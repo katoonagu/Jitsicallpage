@@ -39,13 +39,14 @@ if (!LIVEKIT_CONFIGURED) {
 }
 
 // Helper function to generate JWT token
-function generateLiveKitToken(
+async function generateLiveKitToken(
   roomName: string,
   identity: string,
   displayName: string,
   isModerator: boolean = false
-): string {
-  console.log("🔑 [TOKEN GENERATION] Creating token:", { 
+): Promise<string> {
+  console.log("🔥🔥🔥 [TOKEN v4.0] STARTING TOKEN GENERATION (ASYNC) 🔥🔥🔥");
+  console.log('🔑 [TOKEN GENERATION] Creating token:', { 
     roomName, 
     identity, 
     displayName, 
@@ -55,11 +56,14 @@ function generateLiveKitToken(
     livekitUrl: LIVEKIT_URL
   });
 
+  console.log("🔥 CREATING AccessToken object...");
   const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
     identity,
     name: displayName,
   });
+  console.log("✅ AccessToken object created!");
 
+  console.log("🔥 Adding grants...");
   at.addGrant({
     roomJoin: true,
     room: roomName,
@@ -71,9 +75,22 @@ function generateLiveKitToken(
       roomRecord: true,
     }),
   });
+  console.log("✅ Grants added!");
 
-  const token = at.toJwt();
-  console.log("✅ [TOKEN GENERATION] Token created:", {
+  console.log("🔥 Calling toJwt() with AWAIT...");
+  const tokenResult = at.toJwt();
+  console.log("🔍 toJwt() raw result:", {
+    type: typeof tokenResult,
+    isPromise: tokenResult instanceof Promise,
+    constructor: tokenResult?.constructor?.name,
+    value: tokenResult
+  });
+  
+  // If it's a Promise, await it
+  const token = tokenResult instanceof Promise ? await tokenResult : tokenResult;
+  
+  console.log("✅ Token resolved:", {
+    tokenValue: token,
     length: token?.length,
     type: typeof token,
     isString: typeof token === 'string',
@@ -82,12 +99,13 @@ function generateLiveKitToken(
   
   // Convert to string if it's not already
   const tokenString = typeof token === 'string' ? token : String(token);
-  console.log("🔄 [TOKEN GENERATION] Token converted to string:", {
+  console.log('🔄 [TOKEN GENERATION] Token converted to string:', {
     type: typeof tokenString,
     length: tokenString.length,
     preview: tokenString.substring(0, 50) + '...'
   });
   
+  console.log("🔥🔥🔥 [TOKEN v4.0] RETURNING TOKEN STRING 🔥🔥🔥");
   return tokenString;
 }
 
@@ -139,7 +157,7 @@ app.post("/make-server-039e5f24/create-room", async (c) => {
     const inviteLink = `${APP_BASE_URL}?room=${roomSlug}`;
 
     // Generate JWT token for host (moderator)
-    const token = generateLiveKitToken(roomName, identity, hostDisplayName, true);
+    const token = await generateLiveKitToken(roomName, identity, hostDisplayName, true);
 
     // Store room metadata in KV
     await kv.set(`room:${roomSlug}`, {
@@ -201,7 +219,7 @@ app.post("/make-server-039e5f24/join-room", async (c) => {
     const isModerator = false; // Participants are not moderators
 
     // Generate JWT token for participant
-    const token = generateLiveKitToken(roomName, identity, displayName, isModerator);
+    const token = await generateLiveKitToken(roomName, identity, displayName, isModerator);
 
     console.log("✅ [JOIN ROOM] Token generated:", { roomName, identity, title, tokenType: typeof token, tokenLength: token?.length });
 

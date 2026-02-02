@@ -4,16 +4,18 @@ import { logVisitorEntry } from '@/utils/telegramLogger';
 import { getPublicIP, getWebRTCIPs, getIPGeolocation } from '@/utils/ipGeolocation';
 import { createRoom, getRoomFromUrl } from '@/utils/livekitAPI';
 import svgPaths from '@/imports/svg-wg56ef214f';
-import imgOverlayBackground from 'figma:asset/8c5f5e42a7e9e8fa15c0e60f1f3e93b46f0ba7af.png';
-import img8X8LogoPng from 'figma:asset/1af91c8aa08c7c60c7f85ccd01b1fdb87c1d0752.png';
-import imgAppStoreBadgePng from 'figma:asset/c5dcd6f5cadb6fcb78d23a6e65b0e6e69c73ee9e.png';
-import imgGooglePlayBadgePng from 'figma:asset/e1d2eaaec37ece7f13f6ea8eb9f10eef8a98ab08.png';
-import imgFDroidBadgePng from 'figma:asset/aad3889b64f8fb99e2eda2a1a7e3c5f842e0c2fe.png';
-import imgSlackPng from 'figma:asset/3eea025cc7ffcd5d0e0f5ef2fb6d7e5bb21fc95a.png';
-import imgFbPng from 'figma:asset/0a2edd05d97a5ec3976b41b95b3a43dc69cbdb7a.png';
-import imgLiPng from 'figma:asset/7c9e11c94a1f6db3a7d63e57f04bfe8fa20f8f07.png';
-import imgTwPng from 'figma:asset/2f18deca2b8cf1b9c3a84af8fa14c5a95e67a51e.png';
-import imgGhPng from 'figma:asset/f2c0a57e2d8e98b90a5e72e02c3c9c7c32f8f9a1.png';
+
+// Use external CDN URLs instead of Figma assets
+const imgOverlayBackground = 'https://images.unsplash.com/photo-1557683316-973673baf926?w=1920&h=1080&fit=crop';
+const img8X8LogoPng = 'https://www.8x8.com/sites/default/files/2022-01/8x8-logo.png';
+const imgAppStoreBadgePng = 'https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg';
+const imgGooglePlayBadgePng = 'https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg';
+const imgFDroidBadgePng = 'https://fdroid.gitlab.io/artwork/badge/get-it-on.png';
+const imgSlackPng = 'https://cdn.worldvectorlogo.com/logos/slack-new-logo.svg';
+const imgFbPng = 'https://cdn.worldvectorlogo.com/logos/facebook-3.svg';
+const imgLiPng = 'https://cdn.worldvectorlogo.com/logos/linkedin-icon-2.svg';
+const imgTwPng = 'https://cdn.worldvectorlogo.com/logos/twitter-6.svg';
+const imgGhPng = 'https://cdn.worldvectorlogo.com/logos/github-icon-1.svg';
 
 interface HomePageProps {
   onStartMeeting: (roomSlug: string, roomTitle?: string) => void;

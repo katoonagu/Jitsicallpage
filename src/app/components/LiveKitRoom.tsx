@@ -99,8 +99,8 @@ export default function LiveKitRoom({
         </div>
       ) : (
         <LKRoom
-          video={true}
-          audio={true}
+          video={false}
+          audio={false}
           token={token}
           serverUrl={livekitUrl}
           connect={true}
