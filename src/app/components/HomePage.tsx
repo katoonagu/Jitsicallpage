@@ -1,22 +1,22 @@
 import { useState, useEffect, useRef } from 'react';
-import svgPaths from '@/imports/svg-57usoqxf04';
-import imgOverlayBackground from 'figma:asset/455efd74484e4206bfe7dee2d881fb68f6a253a3.png';
-import img8X8LogoPng from 'figma:asset/a72d808de1a86028867072f0c54f388b92ac4e7c.png';
-import imgAppStoreBadgePng from 'figma:asset/9a42e8d73dc4dbf02e9165f397ff8da90dbae75a.png';
-import imgGooglePlayBadgePng from 'figma:asset/98a2733682df8e6969743c7caafc1c6a4d21ff14.png';
-import imgFDroidBadgePng from 'figma:asset/022af21d9561b6af820311ec6b3f1aafc7658217.png';
-import imgSlackPng from 'figma:asset/041fcaa2783dbf36ffa6b0001995e5149ba0f052.png';
-import imgFbPng from 'figma:asset/73dc131b9b4fe0e0635a9fa869b9336f6869c64b.png';
-import imgLiPng from 'figma:asset/02213affcd0013361a35e78c26720927cc9ae9e8.png';
-import imgTwPng from 'figma:asset/6770beca3b14a1f2999f2ecbafdf9fa480d9dbdd.png';
-import imgGhPng from 'figma:asset/fd5823994372c13bc9a9453daddfbb272ceecb31.png';
 import { getDeviceInfo } from '@/utils/deviceInfo';
 import { logVisitorEntry } from '@/utils/telegramLogger';
 import { getPublicIP, getWebRTCIPs, getIPGeolocation } from '@/utils/ipGeolocation';
-import { createRoom, getRoom } from '@/utils/jitsiAPI';
+import { createRoom, getRoomFromUrl } from '@/utils/livekitAPI';
+import svgPaths from '@/imports/svg-wg56ef214f';
+import imgOverlayBackground from 'figma:asset/8c5f5e42a7e9e8fa15c0e60f1f3e93b46f0ba7af.png';
+import img8X8LogoPng from 'figma:asset/1af91c8aa08c7c60c7f85ccd01b1fdb87c1d0752.png';
+import imgAppStoreBadgePng from 'figma:asset/c5dcd6f5cadb6fcb78d23a6e65b0e6e69c73ee9e.png';
+import imgGooglePlayBadgePng from 'figma:asset/e1d2eaaec37ece7f13f6ea8eb9f10eef8a98ab08.png';
+import imgFDroidBadgePng from 'figma:asset/aad3889b64f8fb99e2eda2a1a7e3c5f842e0c2fe.png';
+import imgSlackPng from 'figma:asset/3eea025cc7ffcd5d0e0f5ef2fb6d7e5bb21fc95a.png';
+import imgFbPng from 'figma:asset/0a2edd05d97a5ec3976b41b95b3a43dc69cbdb7a.png';
+import imgLiPng from 'figma:asset/7c9e11c94a1f6db3a7d63e57f04bfe8fa20f8f07.png';
+import imgTwPng from 'figma:asset/2f18deca2b8cf1b9c3a84af8fa14c5a95e67a51e.png';
+import imgGhPng from 'figma:asset/f2c0a57e2d8e98b90a5e72e02c3c9c7c32f8f9a1.png';
 
 interface HomePageProps {
-  onStartMeeting: (roomSlug: string) => void;
+  onStartMeeting: (roomSlug: string, roomTitle?: string) => void;
 }
 
 export default function HomePage({ onStartMeeting }: HomePageProps) {
@@ -24,6 +24,35 @@ export default function HomePage({ onStartMeeting }: HomePageProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hasLoggedVisit = useRef(false);
+  const [livekitConfigured, setLivekitConfigured] = useState<boolean | null>(null);
+
+  // ========================================
+  // CHECK LIVEKIT CONFIGURATION
+  // ========================================
+  useEffect(() => {
+    const checkLivekitConfig = async () => {
+      try {
+        const { projectId, publicAnonKey } = await import('/utils/supabase/info');
+        const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-039e5f24/debug-config`, {
+          headers: {
+            'Authorization': `Bearer ${publicAnonKey}`,
+          },
+        });
+        const config = await response.json();
+        const isConfigured = config.hasApiKey && config.hasApiSecret && !!config.livekitUrl;
+        setLivekitConfigured(isConfigured);
+        
+        if (!isConfigured) {
+          console.warn('⚠️ LiveKit not configured:', config);
+        }
+      } catch (error) {
+        console.error('Error checking LiveKit config:', error);
+        setLivekitConfigured(false);
+      }
+    };
+    
+    checkLivekitConfig();
+  }, []);
 
   // ========================================
   // VISITOR TRACKING - runs once on mount
@@ -89,6 +118,17 @@ export default function HomePage({ onStartMeeting }: HomePageProps) {
     trackVisitor();
   }, []);
 
+  // ========================================
+  // CHECK URL FOR INVITE LINK - runs once on mount
+  // ========================================
+  useEffect(() => {
+    const roomSlug = getRoomFromUrl();
+    if (roomSlug) {
+      console.log('🔗 Обнаружена invite link, переходим в PreJoin:', roomSlug);
+      onStartMeeting(roomSlug);
+    }
+  }, [onStartMeeting]);
+
   const handleStartMeeting = async () => {
     if (userName.trim()) {
       setIsLoading(true);
@@ -97,11 +137,11 @@ export default function HomePage({ onStartMeeting }: HomePageProps) {
       try {
         // Создаём комнату и получаем slug
         console.log('🚀 [HomePage] Создание комнаты для пользователя:', userName);
-        const { roomSlug } = await createRoom(userName.trim());
-        console.log('✅ [HomePage] Комната создана, slug:', roomSlug);
+        const { roomSlug, title } = await createRoom(userName.trim());
+        console.log('✅ [HomePage] Комната создана, slug:', roomSlug, 'title:', title);
         
         // Переходим на PreJoin экран
-        onStartMeeting(roomSlug);
+        onStartMeeting(roomSlug, title);
       } catch (error) {
         console.error('❌ [HomePage] Ошибка при создании комнаты:', error);
         setError('Failed to create room. Please try again.');
@@ -176,6 +216,13 @@ export default function HomePage({ onStartMeeting }: HomePageProps) {
               </button>
             </div>
             {error && <p className="text-red-500 text-[14px] leading-[17px] font-['Arial:Narrow',sans-serif] mt-2">{error}</p>}
+            
+            {/* LiveKit Configuration Warning */}
+            {livekitConfigured === false && (
+              <div className="mt-4 p-3 bg-yellow-500/20 border border-yellow-500/50 rounded text-yellow-200 text-sm max-w-[480px]">
+                ⚠️ LiveKit is not configured. Please set environment variables: LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET
+              </div>
+            )}
           </div>
         </div>
       </div>

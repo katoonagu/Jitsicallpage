@@ -1,17 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { create, getNumericDate } from 'https://deno.land/x/djwt@v2.8/mod.ts';
+import { AccessToken } from 'npm:livekit-server-sdk@2.7.2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-// Jitsi JWT Configuration
-const JITSI_APP_ID = Deno.env.get('JITSI_APP_ID') || 'vpaas-magic-cookie-YOUR_APP_ID';
-const JITSI_KEY_ID = Deno.env.get('JITSI_KEY_ID') || 'vpaas/YOUR_KEY_ID';
-const JITSI_PRIVATE_KEY = Deno.env.get('JITSI_PRIVATE_KEY') || '';
-const JITSI_DOMAIN = Deno.env.get('JITSI_DOMAIN') || '8x8.vc';
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -32,10 +26,22 @@ serve(async (req) => {
       );
     }
 
+    // LiveKit environment variables
+    const livekitUrl = Deno.env.get('LIVEKIT_URL')!;
+    const livekitApiKey = Deno.env.get('LIVEKIT_API_KEY')!;
+    const livekitApiSecret = Deno.env.get('LIVEKIT_API_SECRET')!;
+
+    if (!livekitUrl || !livekitApiKey || !livekitApiSecret) {
+      console.error('❌ Missing LiveKit credentials');
+      throw new Error('LiveKit credentials not configured');
+    }
+
     // Create Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    console.log('🔍 Looking for room:', slug);
 
     // Get room data from KV store
     const { data: roomRecord, error: kvError } = await supabase
@@ -45,7 +51,7 @@ serve(async (req) => {
       .single();
 
     if (kvError || !roomRecord) {
-      console.error('Room not found:', slug);
+      console.error('❌ Room not found:', slug);
       return new Response(
         JSON.stringify({ error: 'Room not found' }),
         { 
@@ -67,61 +73,57 @@ serve(async (req) => {
       );
     }
 
+    console.log('✅ Room found:', roomData);
+
     // Determine if user is moderator (host)
     const isModerator = displayName === roomData.hostName;
-    const identity = crypto.randomUUID();
+    const identity = isModerator 
+      ? roomData.hostIdentity 
+      : `participant_${crypto.randomUUID()}`;
 
-    // Generate JWT token for Jitsi
-    let token = '';
-    
-    if (JITSI_PRIVATE_KEY) {
-      // Generate real JWT token (if private key is provided)
-      const now = Math.floor(Date.now() / 1000);
-      const payload = {
-        aud: JITSI_APP_ID,
-        iss: JITSI_APP_ID,
-        sub: JITSI_DOMAIN,
+    console.log('👤 Joining as:', { displayName, identity, isModerator });
+
+    // Generate JWT token for the participant
+    const token = new AccessToken(livekitApiKey, livekitApiSecret, {
+      identity: identity,
+      name: displayName,
+      ttl: '2h',
+    });
+
+    // Grant permissions based on role
+    if (isModerator) {
+      // Full permissions for moderator
+      token.addGrant({
+        roomJoin: true,
         room: slug,
-        exp: getNumericDate(60 * 60 * 2), // 2 hours
-        context: {
-          user: {
-            id: identity,
-            name: displayName,
-            avatar: '',
-            email: '',
-            moderator: isModerator,
-          },
-          features: {
-            livestreaming: isModerator,
-            recording: isModerator,
-            transcription: false,
-          },
-        },
-      };
-
-      const key = await crypto.subtle.importKey(
-        'pkcs8',
-        new TextEncoder().encode(atob(JITSI_PRIVATE_KEY)),
-        { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-        false,
-        ['sign']
-      );
-
-      token = await create({ alg: 'RS256', typ: 'JWT', kid: JITSI_KEY_ID }, payload, key);
+        canPublish: true,
+        canSubscribe: true,
+        canPublishData: true,
+        canUpdateOwnMetadata: true,
+        roomAdmin: true,
+        roomRecord: true,
+      });
     } else {
-      // Mock token for development (Jitsi will work without JWT on meet.jit.si)
-      console.warn('⚠️ No JITSI_PRIVATE_KEY found - using mock token');
-      token = 'mock-jwt-token-for-development';
+      // Standard permissions for participants
+      token.addGrant({
+        roomJoin: true,
+        room: slug,
+        canPublish: true,
+        canSubscribe: true,
+        canPublishData: true,
+        canUpdateOwnMetadata: true,
+      });
     }
 
-    console.log('✅ JWT token generated for:', displayName, 'role:', isModerator ? 'moderator' : 'participant');
+    const jwt = await token.toJwt();
+    console.log('✅ JWT token generated');
 
     // Return response
     return new Response(
       JSON.stringify({
-        jitsiUrl: JITSI_DOMAIN,
+        livekitUrl,
         roomName: slug,
-        token,
+        token: jwt,
         identity,
         role: isModerator ? 'moderator' : 'participant',
         displayName,
@@ -133,7 +135,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Error joining room:', error);
+    console.error('❌ Error joining room:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
       { 

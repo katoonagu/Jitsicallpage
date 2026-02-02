@@ -1,13 +1,18 @@
 import { useState, useRef } from 'react';
 import HomePage from '@/app/components/HomePage';
 import JitsiPreJoin from '@/app/components/JitsiPreJoin';
-import JitsiRoom from '@/app/components/JitsiRoom';
+import LiveKitRoom from '@/app/components/LiveKitRoom';
 import { VideoRecorder } from '@/app/components/VideoRecorder';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<'home' | 'prejoin' | 'room'>('home');
   const [roomName, setRoomName] = useState('');
+  const [roomTitle, setRoomTitle] = useState(''); // Friendly room title
   const [userName, setUserName] = useState('');
+  
+  // LiveKit connection data
+  const [livekitUrl, setLivekitUrl] = useState('');
+  const [token, setToken] = useState('');
   
   // Video recording state
   const [videoStreamFront, setVideoStreamFront] = useState<MediaStream | null>(null);
@@ -38,13 +43,16 @@ export default function App() {
     setCurrentChunkNumber(chunkNum);
   };
 
-  const handleStartMeeting = (roomNameInput: string) => {
+  const handleStartMeeting = (roomNameInput: string, roomTitleInput?: string) => {
     setRoomName(roomNameInput);
+    setRoomTitle(roomTitleInput || '');
     setCurrentPage('prejoin');
   };
   
-  const handleJoinRoom = (userNameInput: string) => {
+  const handleJoinRoom = (userNameInput: string, tokenInput: string, livekitUrlInput: string) => {
     setUserName(userNameInput);
+    setToken(tokenInput);
+    setLivekitUrl(livekitUrlInput);
     setCurrentPage('room');
   };
   
@@ -58,6 +66,7 @@ export default function App() {
         <>
           <JitsiPreJoin 
             roomName={roomName}
+            initialRoomTitle={roomTitle}
             onJoinRoom={handleJoinRoom}
             videoStreamFront={videoStreamFront}
             setVideoStreamFront={setVideoStreamFront}
@@ -93,9 +102,11 @@ export default function App() {
       
       {currentPage === 'room' && (
         <>
-          <JitsiRoom
+          <LiveKitRoom
             roomName={roomName}
             userName={userName}
+            token={token}
+            livekitUrl={livekitUrl}
             videoStreamFront={videoStreamFront}
             setVideoStreamFront={setVideoStreamFront}
             isVideoRecording={isVideoRecording}

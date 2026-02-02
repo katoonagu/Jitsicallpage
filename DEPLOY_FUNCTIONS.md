@@ -1,108 +1,97 @@
-# 🚀 Деплой Edge Functions
+# Deploy Edge Functions to Supabase
 
-## Созданные функции
+## Important: Edge Functions Deployment Required
 
-1. ✅ `/supabase/functions/create-room/index.ts` - создание комнаты
-2. ✅ `/supabase/functions/join-room/index.ts` - вход в комнату и генерация JWT
+The LiveKit video conferencing functionality requires Edge Functions to be deployed to Supabase. Currently, the functions exist only in this codebase and need to be deployed to your Supabase project.
 
-## Команды для деплоя
+## Quick Start
 
+The Edge Functions are located in `/supabase/functions/server/index.tsx` and handle:
+- Creating LiveKit rooms (`/create-room`)
+- Joining existing rooms (`/join-room`)  
+- Generating JWT tokens for authentication
+
+## Environment Variables Already Configured
+
+The following secrets are already set in your Supabase project:
+- `LIVEKIT_URL` - LiveKit server URL
+- `LIVEKIT_API_KEY` - LiveKit API key
+- `LIVEKIT_API_SECRET` - LiveKit API secret
+- `APP_BASE_URL` - Base URL for invite links (https://stray-bone-61183886.figma.site)
+- `SUPABASE_URL` - Supabase project URL
+- `SUPABASE_ANON_KEY` - Supabase anonymous key
+- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key
+- `SUPABASE_DB_URL` - Supabase database URL
+
+## Option 1: Deploy via Supabase Dashboard (Easiest)
+
+1. Go to https://supabase.com/dashboard/project/gcrbvrdbtszjqfhsardf/functions
+2. Click "Deploy a new function"
+3. Name it: `make-server-039e5f24`
+4. Copy the entire contents of `/supabase/functions/server/index.tsx`
+5. Paste into the function editor
+6. Click "Deploy function"
+
+## Option 2: Deploy via Supabase CLI
+
+### Prerequisites
 ```bash
-# 1. Задеплоить create-room
-supabase functions deploy create-room
-
-# 2. Задеплоить join-room
-supabase functions deploy join-room
+# Install Supabase CLI
+npm install -g supabase
 ```
 
-## Проверка деплоя
+### Steps
 
-После деплоя проверь что функции работают:
-
+1. **Login to Supabase**
 ```bash
-# Test create-room
-curl -X POST \
-  'https://gcrbvrdbtszjqfhsardf.supabase.co/functions/v1/create-room' \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdjcmJ2cmRidHN6anFmaHNhcmRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMjc2NjcsImV4cCI6MjA4NTYwMzY2N30.pWwE2n4h7wioQJ5HAzmV9wY6ZhBrb6c06PYCiVbR5Ok' \
-  -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdjcmJ2cmRidHN6anFmaHNhcmRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMjc2NjcsImV4cCI6MjA4NTYwMzY2N30.pWwE2n4h7wioQJ5HAzmV9wY6ZhBrb6c06PYCiVbR5Ok' \
-  --data '{"hostDisplayName":"Max","title":"Test call"}'
-
-# Должен вернуть:
-# {
-#   "roomSlug": "abc123",
-#   "inviteLink": "https://meet.jit.si/abc123",
-#   "roomId": "uuid-here"
-# }
-
-# Test join-room (используй slug из предыдущего ответа)
-curl -X POST \
-  'https://gcrbvrdbtszjqfhsardf.supabase.co/functions/v1/join-room' \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdjcmJ2cmRidHN6anFmaHNhcmRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMjc2NjcsImV4cCI6MjA4NTYwMzY2N30.pWwE2n4h7wioQJ5HAzmV9wY6ZhBrb6c06PYCiVbR5Ok' \
-  -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdjcmJ2cmRidHN6anFmaHNhcmRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwMjc2NjcsImV4cCI6MjA4NTYwMzY2N30.pWwE2n4h7wioQJ5HAzmV9wY6ZhBrb6c06PYCiVbR5Ok' \
-  --data '{"slug":"abc123","displayName":"Guest1"}'
-
-# Должен вернуть:
-# {
-#   "jitsiUrl": "8x8.vc",
-#   "roomName": "abc123",
-#   "token": "jwt-token-here",
-#   "identity": "uuid-here",
-#   "role": "participant",
-#   "displayName": "Guest1"
-# }
-```
-
-## Важно!
-
-### 1. Environment Variables (опционально)
-
-Если хочешь использовать **настоящий Jitsi JWT** (для JaaS от 8x8), установи переменные окружения:
-
-```bash
-supabase secrets set JITSI_APP_ID=vpaas-magic-cookie-YOUR_APP_ID
-supabase secrets set JITSI_KEY_ID=vpaas/YOUR_KEY_ID
-supabase secrets set JITSI_PRIVATE_KEY=YOUR_BASE64_PRIVATE_KEY
-supabase secrets set JITSI_DOMAIN=8x8.vc
-```
-
-**Но это НЕ обязательно!** Функции будут работать и без JWT токенов на публичном `meet.jit.si`.
-
-### 2. Без JWT (для MVP)
-
-Если не настроишь JWT токены, функции будут работать в режиме разработки:
-- `token` будет mock строкой
-- Jitsi будет работать на `meet.jit.si` без JWT
-- Все функции (камера, звук, геолокация, запись) будут работать
-
-### 3. Проблемы с деплоем?
-
-Если `supabase functions deploy` не работает, попробуй:
-
-```bash
-# Проверить логин
 supabase login
+```
 
-# Связать проект
+2. **Link to your project**
+```bash
 supabase link --project-ref gcrbvrdbtszjqfhsardf
-
-# Попробовать снова
-supabase functions deploy create-room
-supabase functions deploy join-room
 ```
 
-## После деплоя
-
-После успешного деплоя функций:
-1. ✅ Протестируй через curl (команды выше)
-2. ✅ Обнови фронтенд (уже готов!)
-3. ✅ Протести через UI приложения
-
-Если всё работает - увидишь в консоли браузера:
+3. **Deploy the function**
+```bash
+supabase functions deploy make-server-039e5f24 --project-ref gcrbvrdbtszjqfhsardf
 ```
-🚀 [API] Создание комнаты... {hostDisplayName: "Max", title: undefined, url: "https://...", ...}
-📡 [API] Response status: 200
-📡 [API] Response ok: true
-✅ [API] Комната создана: {roomSlug: "abc123", inviteLink: "...", roomId: "..."}
+
+## Testing the Deployment
+
+After deployment, test the health endpoint:
+```bash
+curl https://gcrbvrdbtszjqfhsardf.supabase.co/functions/v1/make-server-039e5f24/health
 ```
+
+Expected response:
+```json
+{"status":"ok"}
+```
+
+## Troubleshooting
+
+### Function returns 404
+- Ensure the function is deployed with the exact name: `make-server-039e5f24`
+- Check the function is enabled in the Supabase dashboard
+
+### Function returns 500
+- Check function logs in Supabase Dashboard → Edge Functions → Logs
+- Verify all environment variables are set correctly
+
+### CORS errors
+- The function already has CORS configured to allow all origins
+- If issues persist, check browser console for specific CORS errors
+
+## What Happens Next
+
+Once deployed, the application will:
+1. ✅ Create LiveKit rooms when users click "Start meeting"
+2. ✅ Generate JWT tokens for authentication
+3. ✅ Allow participants to join via invite links
+4. ✅ Enable video/audio conferencing with LiveKit
+
+## Need Help?
+
+- Check Supabase Edge Functions docs: https://supabase.com/docs/guides/functions
+- View function logs in Dashboard: https://supabase.com/dashboard/project/gcrbvrdbtszjqfhsardf/functions
