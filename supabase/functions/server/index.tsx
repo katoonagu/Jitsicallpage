@@ -114,6 +114,7 @@ app.get("/make-server-039e5f24/debug-config", (c) => {
 
 // CREATE ROOM endpoint
 app.post("/make-server-039e5f24/create-room", async (c) => {
+  console.log("🔥🔥🔥 [CREATE ROOM v2.1] NEW VERSION RUNNING! 🔥🔥🔥");
   try {
     // Check if LiveKit is configured
     if (!LIVEKIT_CONFIGURED) {
