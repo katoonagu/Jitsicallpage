@@ -168,107 +168,78 @@ export default function HomePage({ onStartMeeting }: HomePageProps) {
 
   return (
     <div className="bg-white relative size-full overflow-auto">
-      <div className="absolute bg-white content-stretch flex flex-col items-start left-0 min-h-[640px] right-0 top-0">
+      <div className="bg-white flex flex-col items-center w-full min-h-screen">
         {/* Hero Section with Background */}
         <div 
-          className="bg-size-[auto_auto,auto_auto,1280px_613px] bg-top-left relative shrink-0 w-full" 
+          className="relative w-full bg-cover bg-center" 
           style={{ 
             backgroundImage: `linear-gradient(90deg, rgba(0, 0, 0, 0.2) 0%, rgba(0, 0, 0, 0.2) 100%), linear-gradient(90deg, rgb(0, 0, 0) 0%, rgba(0, 0, 0, 0) 75.16%), url('${imgOverlayBackground}')` 
           }}
         >
-          <div className="overflow-clip rounded-[inherit] size-full">
-            <div className="content-stretch flex flex-col items-center pb-[16px] pt-[120px] px-4 md:px-8 lg:px-[163px] relative w-full">
-              <div className="h-[245.14px] max-w-[688px] relative shrink-0 w-full mx-auto">
-                {/* Logo */}
-                <div className="absolute inset-[-84px_0_84px_0]">
-                  <a className="absolute content-stretch cursor-pointer flex flex-col h-[32px] items-start left-0 max-h-[70px] max-w-[140px] top-0 w-[71px]" href="https://jitsi.org/">
-                    <div className="content-stretch flex flex-col h-[32px] items-start max-h-[70px] max-w-[140px] relative shrink-0 w-[71px]">
-                      <div className="content-stretch flex flex-col h-[32px] items-start justify-center overflow-clip relative shrink-0 w-[71px]">
-                        <div className="h-[32px] relative shrink-0 w-[71px]">
-                          <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 71 32">
-                            <g clipPath="url(#clip0_1_107)">
-                              <path d={svgPaths.p187d5d00} fill="white" />
-                              <path d={svgPaths.p373a8600} fill="white" />
-                              <path d={svgPaths.p1981b00} fill="white" />
-                              <path d={svgPaths.p1c73ca00} fill="white" />
-                              <path d={svgPaths.p883c300} fill="white" />
-                              <path d={svgPaths.p30fb000} fill="white" />
-                            </g>
-                            <defs>
-                              <clipPath id="clip0_1_107">
-                                <rect fill="white" height="32" width="71" />
-                              </clipPath>
-                            </defs>
-                          </svg>
-                        </div>
-                      </div>
-                    </div>
-                  </a>
-                </div>
+          <div className="w-full max-w-[1280px] mx-auto px-4 sm:px-6 md:px-8 lg:px-[163px]">
+            {/* Logo */}
+            <div className="pt-12 pb-8">
+              <a className="inline-block" href="https://jitsi.org/">
+                <svg className="w-[71px] h-[32px]" fill="none" preserveAspectRatio="none" viewBox="0 0 71 32">
+                  <g clipPath="url(#clip0_1_107)">
+                    <path d={svgPaths.p187d5d00} fill="white" />
+                    <path d={svgPaths.p373a8600} fill="white" />
+                    <path d={svgPaths.p1981b00} fill="white" />
+                    <path d={svgPaths.p1c73ca00} fill="white" />
+                    <path d={svgPaths.p883c300} fill="white" />
+                    <path d={svgPaths.p30fb000} fill="white" />
+                  </g>
+                  <defs>
+                    <clipPath id="clip0_1_107">
+                      <rect fill="white" height="32" width="71" />
+                    </clipPath>
+                  </defs>
+                </svg>
+              </a>
+            </div>
 
-                {/* Heading */}
-                <div className="absolute content-stretch flex flex-col items-center left-[255.31px] pt-[30px] top-0">
-                  <div className="content-stretch flex flex-col items-center min-w-[177.3800048828125px] relative shrink-0">
-                    <div className="flex flex-col font-['Arial',sans-serif] justify-center leading-[0] not-italic relative shrink-0 text-[42px] text-center text-white whitespace-nowrap">
-                      <p className="leading-[50px]">Jitsi Meet</p>
-                    </div>
-                  </div>
-                </div>
+            {/* Main Content - Centered */}
+            <div className="flex flex-col items-center text-center py-8">
+              {/* Heading */}
+              <h1 className="font-['Arial',sans-serif] text-white text-3xl sm:text-4xl md:text-[42px] leading-[1.2] mb-4">
+                Jitsi Meet
+              </h1>
 
-                {/* Subtitle */}
-                <div className="absolute content-stretch flex flex-col items-start left-[184.52px] pb-[32px] pt-[16px] top-[80px]">
-                  <div className="content-stretch flex flex-col items-center relative shrink-0">
-                    <div className="flex flex-col font-['Arial',sans-serif] font-bold justify-center leading-[0] not-italic relative shrink-0 text-[20px] text-center text-white whitespace-nowrap">
-                      <p className="leading-[26px]">Secure and high quality meetings</p>
-                    </div>
-                  </div>
-                </div>
+              {/* Subtitle */}
+              <p className="font-['Arial',sans-serif] font-bold text-white text-base sm:text-lg md:text-[20px] leading-[1.3] mb-8">
+                Secure and high quality meetings
+              </p>
 
-                {/* Input and Button */}
-                <div className="-translate-x-1/2 absolute content-stretch flex items-center justify-center left-1/2 max-w-[480px] top-[154px] w-[480px]">
-                  <div className="bg-white flex-[1_0_0] min-h-px min-w-px relative rounded-[4px]">
-                    <div className="content-stretch flex items-start p-[4px] relative w-full">
-                      <div className="flex-[1_0_0] min-h-px min-w-px relative self-stretch">
-                        <div className="content-stretch flex flex-col items-start pr-[4px] relative size-full">
-                          <div className="bg-white h-[50px] relative rounded-[4px] shrink-0 w-full">
-                            <div className="flex flex-row justify-center overflow-clip rounded-[inherit] size-full">
-                              <div className="content-stretch flex items-start justify-center pl-[10px] pr-[2px] py-[17px] relative size-full">
-                                <div className="content-stretch flex flex-[1_0_0] flex-col items-start min-h-px min-w-px overflow-clip relative">
-                                  <input
-                                    type="text"
-                                    value={userName}
-                                    onChange={(e) => setUserName(e.target.value)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' && !isLoading) {
-                                        handleStartMeeting();
-                                      }
-                                    }}
-                                    placeholder="Enter meeting name"
-                                    disabled={isLoading}
-                                    className="flex flex-col font-['Arial',sans-serif] justify-center leading-[normal] not-italic relative shrink-0 text-[#253858] text-[14px] w-full border-none outline-none bg-transparent"
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={handleStartMeeting}
-                        disabled={isLoading}
-                        className="bg-[#0074e0] content-stretch flex flex-col items-center justify-center min-w-[123.2699966430664px] px-[20px] py-[17px] relative rounded-[3px] shrink-0 hover:bg-[#0066c7] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <div className="flex flex-col font-['Arial',sans-serif] justify-center leading-[0] not-italic relative shrink-0 text-[14px] text-center text-white whitespace-nowrap">
-                          <p className="leading-[normal]">{isLoading ? 'Loading...' : 'Start meeting'}</p>
-                        </div>
-                      </button>
-                    </div>
+              {/* Input and Button - Fixed Width */}
+              <div className="w-full max-w-[480px] px-4 sm:px-0">
+                <div className="bg-white rounded-[4px] p-1 flex items-center gap-1">
+                  <div className="flex-1 bg-white rounded-[4px] h-[50px] flex items-center px-3">
+                    <input
+                      type="text"
+                      value={userName}
+                      onChange={(e) => setUserName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !isLoading) {
+                          handleStartMeeting();
+                        }
+                      }}
+                      placeholder="Enter meeting name"
+                      disabled={isLoading}
+                      className="font-['Arial',sans-serif] text-[#253858] text-[14px] w-full border-none outline-none bg-transparent placeholder:text-gray-400"
+                    />
                   </div>
+                  <button
+                    onClick={handleStartMeeting}
+                    disabled={isLoading}
+                    className="bg-[#0074e0] text-white text-[14px] font-['Arial',sans-serif] px-5 py-[17px] rounded-[3px] hover:bg-[#0066c7] transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    {isLoading ? 'Loading...' : 'Start meeting'}
+                  </button>
                 </div>
 
                 {/* Error Message */}
                 {error && (
-                  <div className="-translate-x-1/2 absolute left-1/2 top-[220px] max-w-[480px] w-[480px]">
+                  <div className="mt-4">
                     <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
                       <p className="text-red-400 text-sm text-center">{error}</p>
                     </div>
@@ -276,223 +247,141 @@ export default function HomePage({ onStartMeeting }: HomePageProps) {
                 )}
 
                 {/* Book meeting URL text */}
-                <div className="-translate-x-1/2 absolute content-stretch flex items-start justify-center left-1/2 max-w-[648px] pb-[0.14px] pt-[15px] top-[212px] w-[648px]">
-                  <div className="flex flex-col font-['Arial',sans-serif] justify-center leading-[0] not-italic relative shrink-0 text-[#f1f1f1] text-[12px] text-center whitespace-nowrap">
-                    <p className="leading-[17.14px]">Or </p>
-                  </div>
-                  <div className="content-stretch flex items-start justify-center relative shrink-0">
-                    <a className="flex flex-col font-['Arial',sans-serif] font-bold justify-center leading-[0] not-italic relative shrink-0 text-[#f1f1f1] text-[12px] text-center whitespace-nowrap" href="https://moderated.jitsi.net/">
-                      <p className="cursor-pointer leading-[17.14px]">book a meeting URL</p>
-                    </a>
-                  </div>
-                  <div className="flex flex-col font-['Arial',sans-serif] justify-center leading-[0] not-italic relative shrink-0 text-[#f1f1f1] text-[12px] text-center whitespace-nowrap">
-                    <p className="leading-[17.14px]"> in advance where you are the only moderator.</p>
-                  </div>
-                </div>
-
-                {/* Settings Button */}
-                <div className="absolute content-stretch flex flex-col items-start p-[4px] right-0 rounded-[3px] top-[-69px]">
-                  <div className="bg-[rgba(255,255,255,0.38)] content-stretch flex flex-col items-start justify-center relative rounded-[3px] shrink-0 size-[24px]">
-                    <div className="content-stretch flex flex-col items-start relative shrink-0 w-full">
-                      <div className="relative shrink-0 size-[24px]">
-                        <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 24 24">
-                          <path clipRule="evenodd" d={svgPaths.pe3b500} fill="white" fillRule="evenodd" />
-                          <path clipRule="evenodd" d={svgPaths.pee08300} fill="white" fillRule="evenodd" />
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
+                <div className="mt-4 text-[#f1f1f1] text-[12px] leading-[17.14px] font-['Arial',sans-serif]">
+                  <span>Or </span>
+                  <a className="font-bold hover:underline" href="https://moderated.jitsi.net/">
+                    book a meeting URL
+                  </a>
+                  <span> in advance where you are the only moderator.</span>
                 </div>
               </div>
             </div>
+
+            {/* Settings Button - Top Right */}
+            <div className="absolute top-12 right-4 sm:right-6 md:right-8 lg:right-[163px]">
+              <button className="bg-[rgba(255,255,255,0.38)] p-1 rounded-[3px] w-[24px] h-[24px] flex items-center justify-center hover:bg-[rgba(255,255,255,0.5)] transition-colors">
+                <svg className="w-full h-full" fill="none" preserveAspectRatio="none" viewBox="0 0 24 24">
+                  <path clipRule="evenodd" d={svgPaths.pe3b500} fill="white" fillRule="evenodd" />
+                  <path clipRule="evenodd" d={svgPaths.pee08300} fill="white" fillRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Spacing */}
+            <div className="h-16"></div>
           </div>
         </div>
 
         {/* Content Section */}
-        <div className="content-stretch flex flex-col gap-[40px] items-center pt-[40px] relative shrink-0 w-full">
-          <div className="content-stretch flex flex-col items-center justify-center max-w-[688px] px-4 relative shrink-0 w-full mx-auto">
-            <div className="h-[16px] shrink-0 w-full" />
-            
-            {/* Jitsi as a Service Card */}
-            <div className="content-stretch flex flex-col items-start pb-[16px] relative shrink-0 w-full">
-              <div className="bg-[#444447] content-stretch flex flex-col items-start relative rounded-[8px] shrink-0 w-full">
-                <div className="h-[297.14px] relative shrink-0 w-full">
-                  <div className="absolute content-stretch flex items-center left-[32px] right-[32px] top-[32px]">
-                    <div className="content-stretch flex flex-col items-start pr-[16px] relative shrink-0">
-                      <div className="relative shrink-0 size-[32px]">
-                        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                          <img alt="" className="absolute left-0 max-w-none size-full top-0" src={img8X8LogoPng} />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="content-stretch flex flex-col items-start min-w-[120.05000305175781px] relative shrink-0">
-                      <div className="flex flex-col font-['Arial',sans-serif] justify-center leading-[0] not-italic relative shrink-0 text-[16px] text-white whitespace-nowrap">
-                        <p className="leading-[32px]">Jitsi as a Service</p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="absolute content-stretch flex flex-col items-start left-[32px] right-[32px] top-[94px]">
-                    <div className="flex flex-col font-['Arial',sans-serif] justify-center leading-[0] not-italic relative shrink-0 text-[24px] text-white whitespace-nowrap">
-                      <p>
-                        <span className="leading-[36px]">Want meetings in your app? Check out </span>
-                        <span className="font-bold leading-[36px] not-italic">Jitsi as a Service</span>
-                        <span className="leading-[36px]">.</span>
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="absolute content-stretch flex flex-col items-start left-[32px] right-[32px] top-[146px]">
-                    <div className="flex flex-col font-['Arial',sans-serif] justify-center leading-[24px] not-italic relative shrink-0 text-[16px] text-white whitespace-nowrap">
-                      <p className="mb-0">Connect the users of your website or app. Get branding & tight access controls. Have</p>
-                      <p>notifications, transcriptions & recordings delivered straight to your backend</p>
-                    </div>
-                  </div>
-                  
-                  <div className="absolute content-stretch flex flex-col items-start left-[32px] right-[32px] top-[218px]">
-                    <a className="content-stretch cursor-pointer flex items-start relative shrink-0" href="https://jaas.8x8.vc/">
-                      <div className="bg-white content-stretch flex items-start pb-[15.14px] pt-[14px] px-[16px] relative rounded-[3px] shrink-0">
-                        <div className="flex flex-col font-['Arial',sans-serif] font-bold justify-center leading-[0] not-italic relative shrink-0 text-[#36373a] text-[12px] text-left whitespace-nowrap" role="link" tabIndex={0}>
-                          <p className="cursor-pointer leading-[17.14px]">Learn more</p>
-                        </div>
-                      </div>
-                    </a>
-                  </div>
+        <div className="w-full flex flex-col items-center py-10 px-4">
+          {/* Jitsi as a Service Card */}
+          <div className="w-full max-w-[688px]">
+            <div className="bg-[#444447] rounded-[8px] p-8 relative">
+              {/* Header with Logo */}
+              <div className="flex items-center mb-8">
+                <img alt="8x8 Logo" className="w-[32px] h-[32px] mr-4" src={img8X8LogoPng} />
+                <h2 className="font-['Arial',sans-serif] text-white text-[16px] leading-[32px]">
+                  Jitsi as a Service
+                </h2>
+              </div>
+              
+              {/* Main Text */}
+              <h3 className="font-['Arial',sans-serif] text-white text-xl sm:text-2xl leading-[1.5] mb-4">
+                Want meetings in your app? Check out <span className="font-bold">Jitsi as a Service</span>.
+              </h3>
+              
+              {/* Description */}
+              <p className="font-['Arial',sans-serif] text-white text-[16px] leading-[24px] mb-6">
+                Connect the users of your website or app. Get branding & tight access controls. Have
+                notifications, transcriptions & recordings delivered straight to your backend
+              </p>
+              
+              {/* Learn More Button */}
+              <a 
+                className="inline-block bg-white text-[#36373a] font-['Arial',sans-serif] font-bold text-[12px] leading-[17.14px] px-4 py-3.5 rounded-[3px] hover:bg-gray-100 transition-colors" 
+                href="https://jaas.8x8.vc/"
+              >
+                Learn more
+              </a>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="bg-[#131519] w-full">
+          <div className="max-w-[1280px] mx-auto px-4 md:px-8 lg:px-[163px]">
+            {/* Mobile Apps Section */}
+            <div className="border-b border-[#424447] py-10">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                <p className="font-['Arial',sans-serif] text-white text-[12px] leading-[17.14px] text-center md:text-left">
+                  Jitsi on mobile – download our apps<br />and start a meeting from anywhere
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-4">
+                  <a href="https://apps.apple.com/us/app/jitsi-meet/id1165103905">
+                    <img alt="App Store" className="h-[40px] w-[120px]" src={imgAppStoreBadgePng} />
+                  </a>
+                  <a href="https://play.google.com/store/apps/details">
+                    <img alt="Google Play" className="h-[45px] w-[153px]" src={imgGooglePlayBadgePng} />
+                  </a>
+                  <a href="https://f-droid.org/en/packages/org.jitsi.meet/">
+                    <img alt="F-Droid" className="h-[40px] w-[135px]" src={imgFDroidBadgePng} />
+                  </a>
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Footer */}
-          <div className="bg-[#131519] relative shrink-0 w-full">
-            <div className="content-stretch flex flex-col items-start px-4 md:px-8 lg:px-[163px] relative w-full">
-              <div className="relative shrink-0 w-full">
-                <div className="content-stretch flex flex-col items-start px-[16px] relative w-full">
-                  {/* Mobile Apps Section */}
-                  <div className="relative shrink-0 w-full">
-                    <div aria-hidden="true" className="absolute border-[#424447] border-b border-solid inset-0 pointer-events-none" />
-                    <div className="flex flex-row items-center size-full">
-                      <div className="content-stretch flex items-center justify-between pb-[25px] pr-[0.03px] pt-[40px] relative w-full">
-                        <div className="h-[34.28px] max-w-[216px] relative shrink-0 w-[216px]">
-                          <div className="absolute content-stretch flex flex-col items-center left-0 max-w-[200px] min-w-[200px] px-[4.61px] top-[-0.93px]">
-                            <div className="flex flex-col font-['Arial',sans-serif] justify-center leading-[17.14px] not-italic relative shrink-0 text-[12px] text-center text-white whitespace-nowrap">
-                              <p className="mb-0">Jitsi on mobile – download our apps</p>
-                              <p>and start a meeting from anywhere</p>
-                            </div>
-                          </div>
-                        </div>
-                        <a className="content-stretch cursor-pointer flex flex-col items-start relative shrink-0" href="https://apps.apple.com/us/app/jitsi-meet/id1165103905">
-                          <div className="h-[40px] relative shrink-0 w-[120px]">
-                            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                              <img alt="" className="absolute left-0 max-w-none size-full top-0" src={imgAppStoreBadgePng} />
-                            </div>
-                          </div>
-                        </a>
-                        <a className="content-stretch cursor-pointer flex flex-col items-start relative shrink-0" href="https://play.google.com/store/apps/details">
-                          <div className="h-[45px] relative shrink-0 w-[153px]">
-                            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                              <img alt="" className="absolute left-0 max-w-none size-full top-0" src={imgGooglePlayBadgePng} />
-                            </div>
-                          </div>
-                        </a>
-                        <a className="content-stretch cursor-pointer flex flex-col items-start relative shrink-0" href="https://f-droid.org/en/packages/org.jitsi.meet/">
-                          <div className="h-[40px] relative shrink-0 w-[135px]">
-                            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                              <img alt="" className="absolute left-0 max-w-none size-full top-0" src={imgFDroidBadgePng} />
-                            </div>
-                          </div>
-                        </a>
-                      </div>
-                    </div>
-                  </div>
+            {/* Slack Section */}
+            <div className="border-b border-[#424447] py-8">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                <p className="font-['Arial',sans-serif] text-white text-[12px] leading-[17.14px] text-center md:text-left">
+                  Hello, Slack fans! Very pleased to meet you! Just add our extension and off you go!
+                </p>
+                <a href="https://slack.com/oauth/authorize">
+                  <img alt="Add to Slack" className="h-[40px] w-[156px]" src={imgSlackPng} />
+                </a>
+              </div>
+            </div>
 
-                  {/* Slack Section */}
-                  <div className="content-stretch flex items-center justify-between pb-[33px] pt-[32px] relative shrink-0 w-full">
-                    <div aria-hidden="true" className="absolute border-[#424447] border-b border-solid inset-0 pointer-events-none" />
-                    <div className="content-stretch flex flex-col items-start min-w-[473.3900146484375px] pr-[32px] relative shrink-0">
-                      <div className="flex flex-col font-['Arial',sans-serif] justify-center leading-[0] not-italic relative shrink-0 text-[12px] text-white whitespace-nowrap">
-                        <p className="leading-[17.14px]">Hello, Slack fans! Very pleased to meet you! Just add our extension and off you go!</p>
-                      </div>
-                    </div>
-                    <a className="content-stretch cursor-pointer flex flex-col items-start relative shrink-0" href="https://slack.com/oauth/authorize">
-                      <div className="h-[40px] relative shrink-0 w-[156px]">
-                        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                          <img alt="" className="absolute left-0 max-w-none size-full top-0" src={imgSlackPng} />
-                        </div>
-                      </div>
-                    </a>
-                  </div>
-
-                  {/* Links and Social */}
-                  <div className="content-stretch flex items-center justify-between pb-[21px] pt-[20px] relative shrink-0 w-full">
-                    <div aria-hidden="true" className="absolute border-[#424447] border-b border-solid inset-0 pointer-events-none" />
-                    <div className="content-stretch flex gap-[16px] items-start pr-[16px] relative shrink-0">
-                      <div className="content-stretch flex items-start relative shrink-0">
-                        <a className="flex flex-col font-['Arial',sans-serif] font-bold justify-center leading-[0] not-italic relative shrink-0 text-[12px] text-white whitespace-nowrap" href="https://jitsi.org/meet-jit-si-privacy/">
-                          <p className="cursor-pointer leading-[16px]">Privacy Policy </p>
-                        </a>
-                      </div>
-                      <div className="content-stretch flex items-start relative shrink-0">
-                        <a className="flex flex-col font-['Arial',sans-serif] font-bold justify-center leading-[0] not-italic relative shrink-0 text-[12px] text-white whitespace-nowrap" href="http://jitsi.org/meet-jit-si-terms-of-service/">
-                          <p className="cursor-pointer leading-[16px]">Terms & Conditions</p>
-                        </a>
-                      </div>
-                    </div>
-                    <div className="content-stretch cursor-pointer flex gap-[27.3px] items-start pb-[2.14px] pl-[24px] relative shrink-0">
-                      <a className="content-stretch flex items-start pb-[3px] relative shrink-0" href="https://www.facebook.com/jitsi">
-                        <div className="relative shrink-0 size-[24px]">
-                          <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                            <img alt="" className="absolute left-0 max-w-none size-full top-0" src={imgFbPng} />
-                          </div>
-                        </div>
-                      </a>
-                      <a className="content-stretch flex items-start pb-[3px] relative shrink-0" href="https://www.linkedin.com/company/8x8/">
-                        <div className="relative shrink-0 size-[24px]">
-                          <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                            <img alt="" className="absolute left-0 max-w-none size-full top-0" src={imgLiPng} />
-                          </div>
-                        </div>
-                      </a>
-                      <a className="content-stretch flex items-start pb-[3px] relative shrink-0" href="https://twitter.com/jitsinews">
-                        <div className="relative shrink-0 size-[24px]">
-                          <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                            <img alt="" className="absolute left-0 max-w-none size-full top-0" src={imgTwPng} />
-                          </div>
-                        </div>
-                      </a>
-                      <a className="content-stretch flex items-start pb-[3px] relative shrink-0" href="https://github.com/jitsi">
-                        <div className="relative shrink-0 size-[24px]">
-                          <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                            <img alt="" className="absolute left-0 max-w-none size-full top-0" src={imgGhPng} />
-                          </div>
-                        </div>
-                      </a>
-                    </div>
-                  </div>
-
-                  {/* Copyright */}
-                  <div className="content-stretch flex items-center pb-[56px] pt-[32px] relative shrink-0 w-full">
-                    <a className="content-stretch cursor-pointer flex flex-col items-start pr-[32px] relative shrink-0" href="https://8x8.com/">
-                      <div className="relative shrink-0 size-[32px]">
-                        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                          <img alt="" className="absolute left-0 max-w-none size-full top-0" src={img8X8LogoPng} />
-                        </div>
-                      </div>
-                    </a>
-                    <div className="content-stretch flex flex-col items-start min-w-[250.55999755859375px] relative shrink-0">
-                      <div className="content-stretch flex flex-col items-start relative shrink-0 w-full">
-                        <div className="flex flex-col font-['Arial',sans-serif] justify-center leading-[0] not-italic relative shrink-0 text-[#a1a1a3] text-[12px] whitespace-nowrap">
-                          <p className="leading-[16px]">8x8 is a proud supporter of the Jitsi community.</p>
-                        </div>
-                      </div>
-                      <div className="content-stretch flex flex-col items-start relative shrink-0 w-full">
-                        <div className="flex flex-col font-['Arial',sans-serif] justify-center leading-[0] not-italic relative shrink-0 text-[#a1a1a3] text-[12px] whitespace-nowrap">
-                          <p className="leading-[16px]">© 8x8, Inc. All Rights Reserved.</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+            {/* Links and Social */}
+            <div className="border-b border-[#424447] py-6">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+                <div className="flex gap-4">
+                  <a className="font-['Arial',sans-serif] font-bold text-white text-[12px] leading-[16px] hover:underline" href="https://jitsi.org/meet-jit-si-privacy/">
+                    Privacy Policy
+                  </a>
+                  <a className="font-['Arial',sans-serif] font-bold text-white text-[12px] leading-[16px] hover:underline" href="http://jitsi.org/meet-jit-si-terms-of-service/">
+                    Terms & Conditions
+                  </a>
                 </div>
+                <div className="flex gap-6">
+                  <a href="https://www.facebook.com/jitsi">
+                    <img alt="Facebook" className="w-[24px] h-[24px]" src={imgFbPng} />
+                  </a>
+                  <a href="https://www.linkedin.com/company/8x8/">
+                    <img alt="LinkedIn" className="w-[24px] h-[24px]" src={imgLiPng} />
+                  </a>
+                  <a href="https://twitter.com/jitsinews">
+                    <img alt="Twitter" className="w-[24px] h-[24px]" src={imgTwPng} />
+                  </a>
+                  <a href="https://github.com/jitsi">
+                    <img alt="GitHub" className="w-[24px] h-[24px]" src={imgGhPng} />
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {/* Copyright */}
+            <div className="py-8 flex flex-col sm:flex-row items-center gap-4">
+              <a href="https://8x8.com/">
+                <img alt="8x8" className="w-[32px] h-[32px]" src={img8X8LogoPng} />
+              </a>
+              <div className="text-center sm:text-left">
+                <p className="font-['Arial',sans-serif] text-[#a1a1a3] text-[12px] leading-[16px]">
+                  8x8 is a proud supporter of the Jitsi community.
+                </p>
+                <p className="font-['Arial',sans-serif] text-[#a1a1a3] text-[12px] leading-[16px]">
+                  © 8x8, Inc. All Rights Reserved.
+                </p>
               </div>
             </div>
           </div>
