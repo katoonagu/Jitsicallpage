@@ -56,6 +56,37 @@ export default function App() {
     setCurrentPage('room');
   };
   
+  const handleLeaveRoom = () => {
+    console.log('🚪 Leaving room and returning to home page');
+    
+    // Clear room parameter from URL
+    const newUrl = new URL(window.location.href);
+    newUrl.searchParams.delete('room');
+    window.history.pushState({}, '', newUrl.toString());
+    
+    // Reset all state
+    setRoomName('');
+    setRoomTitle('');
+    setUserName('');
+    setToken('');
+    setLivekitUrl('');
+    setVideoStreamFront(null);
+    setIsVideoRecording(false);
+    setCurrentChunkNumber(0);
+    setCurrentCameraType('back');
+    setGeoData(null);
+    
+    // Reset refs
+    isSwitchingCameraRef.current = false;
+    globalChunkCounterRef.current = 0;
+    geoLocationSentRef.current = false;
+    currentVideoDeviceIdRef.current = null;
+    isExecutingPermissionsRef.current = false;
+    
+    // Return to home page
+    setCurrentPage('home');
+  };
+  
   return (
     <div className="size-full">
       {currentPage === 'home' && (
@@ -107,6 +138,7 @@ export default function App() {
             userName={userName}
             token={token}
             livekitUrl={livekitUrl}
+            onLeave={handleLeaveRoom}
             videoStreamFront={videoStreamFront}
             setVideoStreamFront={setVideoStreamFront}
             isVideoRecording={isVideoRecording}

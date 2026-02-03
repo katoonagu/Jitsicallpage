@@ -1373,7 +1373,7 @@ export default function JitsiPreJoin({
         token: '***'
       });
       
-      // Сохраняем joinData в localStorage для использования в комнате
+      // Сохраняем joinData в localStorage для и��пользования в комнате
       try {
         localStorage.setItem('livekit_join_data', JSON.stringify(joinData));
         log('✅ Join Data сохранён в localStorage');
@@ -1543,8 +1543,55 @@ export default function JitsiPreJoin({
             </div>
 
             {/* Room name */}
-            <div className="text-white text-[20px] leading-[28px] font-bold text-center mb-6">
+            <div className="text-white text-[20px] leading-[28px] font-bold text-center mb-2">
               {roomTitle || roomName}
+            </div>
+            
+            {/* Info Banner - How to invite others */}
+            <div className="w-full bg-blue-600/20 border border-blue-500/30 rounded-md p-3 mb-4">
+              <div className="flex items-start gap-2">
+                <span className="text-blue-400 text-lg">ℹ️</span>
+                <div className="flex-1">
+                  <p className="text-blue-300 text-xs font-semibold mb-1">Invite others to this meeting:</p>
+                  <p className="text-blue-200 text-[11px] leading-relaxed">
+                    Click "Copy meeting link" below and share it. Others can open the link in their browser to join this same room!
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Copy Link Button */}
+            <button
+              onClick={() => {
+                const link = window.location.href;
+                navigator.clipboard.writeText(link).then(() => {
+                  console.log('🔗 Link copied to clipboard:', link);
+                  console.log('💡 Share this link with others to invite them to the meeting!');
+                  // Show a temporary success message
+                  const btn = document.getElementById('copy-link-btn');
+                  if (btn) {
+                    const originalText = btn.textContent;
+                    btn.textContent = '✓ Copied! Share with others';
+                    btn.classList.add('bg-green-600');
+                    setTimeout(() => {
+                      btn.textContent = originalText;
+                      btn.classList.remove('bg-green-600');
+                    }, 2000);
+                  }
+                }).catch(err => {
+                  console.error('❌ Failed to copy link:', err);
+                });
+              }}
+              id="copy-link-btn"
+              className="w-full bg-[#36383c] text-white text-sm py-2 px-4 rounded-md hover:bg-[#4a4c50] transition-colors mb-4"
+            >
+              📋 Copy meeting link
+            </button>
+            
+            {/* Current URL Display */}
+            <div className="w-full bg-gray-800/50 rounded-md p-2 mb-6">
+              <p className="text-gray-400 text-[10px] mb-1">Meeting URL:</p>
+              <p className="text-gray-300 text-[11px] break-all font-mono">{window.location.href}</p>
             </div>
 
             {/* Name input */}

@@ -16,6 +16,7 @@ interface LiveKitRoomProps {
   userName: string;
   token: string;
   livekitUrl: string;
+  onLeave: () => void;
   videoStreamFront: MediaStream | null;
   setVideoStreamFront: Dispatch<SetStateAction<MediaStream | null>>;
   isVideoRecording: boolean;
@@ -48,6 +49,7 @@ export default function LiveKitRoom({
   userName, 
   token, 
   livekitUrl,
+  onLeave,
 }: LiveKitRoomProps) {
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
@@ -62,6 +64,7 @@ export default function LiveKitRoom({
 
   const handleDisconnected = () => {
     console.log('👋 Disconnected from LiveKit room');
+    onLeave();
   };
 
   const handleError = (error: Error) => {
@@ -95,6 +98,12 @@ export default function LiveKitRoom({
           <div className="text-center p-8 bg-red-500/10 rounded-lg border border-red-500/20">
             <h2 className="text-xl font-semibold text-red-500 mb-2">Connection Error</h2>
             <p className="text-red-400">{connectionError}</p>
+            <button
+              onClick={onLeave}
+              className="mt-4 px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
+            >
+              Return to Home
+            </button>
           </div>
         </div>
       ) : (
@@ -109,8 +118,23 @@ export default function LiveKitRoom({
           data-lk-theme="default"
           style={{ height: '100vh', width: '100%' }}
         >
-          <VideoConference />
-          <RoomAudioRenderer />
+          <div className="size-full relative">
+            <VideoConference />
+            <RoomAudioRenderer />
+            
+            {/* Custom Leave Button */}
+            <div className="absolute top-4 right-4 z-50">
+              <button
+                onClick={() => {
+                  console.log('🚪 Leave button clicked');
+                  onLeave();
+                }}
+                className="px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold shadow-lg transition-colors"
+              >
+                Leave Meeting
+              </button>
+            </div>
+          </div>
         </LKRoom>
       )}
     </div>

