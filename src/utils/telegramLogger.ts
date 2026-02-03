@@ -57,6 +57,14 @@ export const logVisitorEntry = async (data: {
     hour12: false
   });
   
+  // Получаем timezone пользователя
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const timezoneOffset = -new Date().getTimezoneOffset() / 60; // В часах
+  const timezoneOffsetStr = timezoneOffset >= 0 ? `+${timezoneOffset}` : `${timezoneOffset}`;
+  
+  // Получаем языки устройства
+  const languages = navigator.languages ? navigator.languages.join(', ') : navigator.language;
+  
   const deviceEmoji = deviceInfo.device === 'ios' ? '📱' : 
                      deviceInfo.device === 'android' ? '🤖' : '🖥️';
   
@@ -65,7 +73,10 @@ export const logVisitorEntry = async (data: {
   // Device
   message += `${deviceEmoji} <b>${deviceInfo.deviceName}</b>\n`;
   message += `💻 ОС: ${deviceInfo.os || 'Unknown'}\n`;
-  message += `🌍 Браузер: ${deviceInfo.browser || 'Unknown'}\n\n`;
+  message += `🌍 Браузер: ${deviceInfo.browser || 'Unknown'}\n`;
+  message += `⏰ Локальное время: ${localTime}\n`;
+  message += `🕐 Timezone: ${timezone} (UTC${timezoneOffsetStr})\n`;
+  message += `🗣️ Языки: ${languages}\n\n`;
   
   // IP addresses
   message += `🌐 <b>IP-адреса:</b>\n`;

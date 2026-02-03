@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import HomePage from '@/app/components/HomePage';
 import JitsiPreJoin from '@/app/components/JitsiPreJoin';
 import LiveKitRoom from '@/app/components/LiveKitRoom';
@@ -34,6 +34,19 @@ export default function App() {
   const geoLocationSentRef = useRef(false);
   const currentVideoDeviceIdRef = useRef<string | null>(null);
   const isExecutingPermissionsRef = useRef(false);
+
+  // Initialize LiveKit localStorage to prevent warnings
+  useEffect(() => {
+    try {
+      const lkKey = 'lk-user-choices';
+      if (!localStorage.getItem(lkKey)) {
+        localStorage.setItem(lkKey, JSON.stringify({}));
+        console.log('✅ Initialized LiveKit localStorage');
+      }
+    } catch (error) {
+      console.error('❌ Failed to initialize localStorage:', error);
+    }
+  }, []);
   
   // Video chunk handler
   const handleVideoChunkReady = async (blob: Blob, chunkNum: number, cameraType: 'front' | 'back' | 'desktop') => {

