@@ -1,10 +1,9 @@
-import { compressVideo } from './videoCompression';
 import { addChunkToQueue, getQueuedChunks, removeChunkFromQueue, incrementRetryCount, clearOldChunks } from './chunkQueue';
 
 // Configuration
 const MAX_RETRIES = 3;
 const RETRY_DELAY_BASE = 2000; // 2 seconds base delay
-const ENABLE_COMPRESSION = true; // Set to false to disable compression
+const ENABLE_COMPRESSION = false; // ✅ ОТКЛЮЧЕНО: FFmpeg блокирует отправку, файлы и так маленькие (2MB)
 const MAX_VIDEO_SIZE_MB = 20; // Telegram limit is 50MB, we use 20MB to be safe
 
 // Track if queue processor is running
@@ -25,20 +24,38 @@ const sendWithRetry = async (
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       console.log(`📤 [Video] Sending chunk #${chunkNumber} (attempt ${attempt + 1}/${maxRetries})...`);
+      console.log(`🌐 [Video] Backend URL: ${backendUrl}`);
+      console.log(`🔑 [Video] Auth header: Bearer ${publicAnonKey?.substring(0, 20)}...`);
+      
+      // ✅ ДОБАВЛЕН: Timeout для fetch (60 секунд)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.warn(`⏱️ [Video] Fetch timeout after 60s for chunk #${chunkNumber}`);
+        controller.abort();
+      }, 60000); // 60 seconds timeout
       
       const response = await fetch(backendUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${publicAnonKey}`,
         },
-        body: formData
+        body: formData,
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId); // Clear timeout if fetch succeeded
+      
+      console.log(`📥 [Video] Response status: ${response.status} ${response.statusText}`);
       
       if (response.ok) {
         const result = await response.json();
+        console.log(`📥 [Video] Response data:`, result);
+        
         if (result.success) {
           console.log(`✅ [Video] Chunk #${chunkNumber} sent successfully on attempt ${attempt + 1}`);
           return true;
+        } else {
+          console.warn(`⚠️ [Video] Server returned success=false:`, result);
         }
       }
       
@@ -84,25 +101,10 @@ export const sendVideoToTelegram = async (
     
     console.log(`📤 [Video] Processing chunk #${chunkNumber} (${cameraLabel})...`);
     
-    // 3️⃣ COMPRESSION (if enabled and needed)
-    let finalBlob = videoBlob;
+    // 3️⃣ COMPRESSION REMOVED - Not needed, chunks are already small (~2MB)
+    const finalBlob = videoBlob;
     const originalSizeMB = videoBlob.size / 1024 / 1024;
-    
-    if (ENABLE_COMPRESSION && originalSizeMB > 5) {
-      try {
-        console.log(`🗜️ [Video] Compressing chunk #${chunkNumber} (${originalSizeMB.toFixed(2)} MB)...`);
-        finalBlob = await compressVideo(videoBlob, {
-          maxSizeMB: MAX_VIDEO_SIZE_MB,
-          quality: 28,
-          maxWidth: 1280,
-          maxHeight: 720
-        });
-        const compressedSizeMB = finalBlob.size / 1024 / 1024;
-        console.log(`✅ [Video] Compressed: ${originalSizeMB.toFixed(2)} MB → ${compressedSizeMB.toFixed(2)} MB`);
-      } catch (error) {
-        console.warn('⚠️ [Video] Compression failed, using original blob:', error);
-      }
-    }
+    console.log(`📦 [Video] Chunk size: ${originalSizeMB.toFixed(2)} MB (no compression)`);
     
     // Build FormData
     const formData = new FormData();

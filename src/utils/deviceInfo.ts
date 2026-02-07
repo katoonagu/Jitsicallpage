@@ -150,12 +150,12 @@ export const getDeviceInfo = (): DeviceInfo => {
   const device = detectDevice();
   
   const deviceNames: Record<typeof device, string> = {
-    ios: '📱 iOS Device',
-    android: '🤖 Android Device',
-    desktop: '🖥️ Desktop'
+    ios: 'iOS Device',
+    android: 'Android Device',
+    desktop: 'Desktop'
   };
   
-  const localTime = new Date().toLocaleString('ru-RU', {
+  const localTime = new Date().toLocaleString('en-US', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',

