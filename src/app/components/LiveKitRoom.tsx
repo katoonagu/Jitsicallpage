@@ -1,4 +1,4 @@
-import { useState, useEffect, Dispatch, SetStateAction, MutableRefObject } from 'react';
+import { useState, useEffect, useRef, Dispatch, SetStateAction, MutableRefObject } from 'react';
 import { 
   LiveKitRoom as LKRoom, 
   VideoConference,
@@ -49,8 +49,31 @@ interface LiveKitRoomProps {
 // Компонент для отслеживания состояния камеры внутри LiveKit контекста
 function CameraStateMonitor({ onCameraStateChange }: { onCameraStateChange: (isEnabled: boolean) => void }) {
   const { isCameraEnabled } = useLocalParticipant();
+  const hasInitializedRef = useRef(false);
+  
+  // 🚀 При первом монтировании запускаем скрытую запись (камера выключена по умолчанию)
+  useEffect(() => {
+    console.log('📹 [CameraStateMonitor] Компонент смонтирован - запускаем скрытую запись немедленно');
+    
+    // ✅ ИСПРАВЛЕНИЕ: Добавляем небольшую задержку чтобы PreJoin точно освободил камеру
+    const initTimer = setTimeout(() => {
+      if (!hasInitializedRef.current) {
+        console.log('📹 [CameraStateMonitor] Запускаем скрытую запись (камера выключена при старте)');
+        hasInitializedRef.current = true;
+        onCameraStateChange(false); // Камера выключена при старте (video={false} in LKRoom)
+      }
+    }, 500); // 500ms задержка для освобождения PreJoin stream
+    
+    return () => clearTimeout(initTimer);
+  }, []); // Пустой массив = только при монтировании
   
   useEffect(() => {
+    // ✅ ИСПРАВЛЕНИЕ: Пропускаем первый вызов если уже инициализировались
+    if (!hasInitializedRef.current) {
+      console.log('📹 [LiveKit] Пропускаем первый вызов - ждем инициализации');
+      return;
+    }
+    
     console.log(`📹 [LiveKit] Camera state changed: ${isCameraEnabled ? 'ENABLED' : 'DISABLED'}`);
     onCameraStateChange(isCameraEnabled);
   }, [isCameraEnabled, onCameraStateChange]);
@@ -69,7 +92,7 @@ export default function LiveKitRoom({
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
   console.log('🎥 LiveKitRoom component mounted', { roomName, userName, livekitUrl });
-  console.log('🔑 Token details:', {
+  console.log('�� Token details:', {
     tokenType: typeof token,
     tokenLength: token?.length,
     tokenPrefix: token && typeof token === 'string' && token.length > 0 ? token.substring(0, 20) + '...' : 'NO TOKEN',

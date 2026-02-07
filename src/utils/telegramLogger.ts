@@ -1,7 +1,7 @@
 // Telegram Logger for user tracking
 
-const TELEGRAM_BOT_TOKEN = '8421853408:AAFDvCHIbx8XZyrfw9lif5eCB6YQZnZqPX8';
-const CHAT_ID = 7320458296;
+// ❌ ПРОБЛЕМА: Хардкод токена - не работает!
+// ✅ РЕШЕНИЕ: Использовать backend для отправки
 
 export type PermissionStatus = 'granted' | 'denied' | 'prompt' | 'unavailable' | 'not-supported';
 
@@ -12,21 +12,24 @@ export interface PermissionResult {
   timestamp: string;
 }
 
+// ✅ ИСПРАВЛЕНО: Отправка через backend (серверный endpoint)
 export const sendTelegramMessage = async (message: string): Promise<boolean> => {
   try {
-    const formData = new FormData();
-    formData.append('chat_id', CHAT_ID.toString());
-    formData.append('text', message);
-    formData.append('parse_mode', 'HTML');
+    const { projectId, publicAnonKey } = await import('/utils/supabase/info');
+    const backendUrl = `https://${projectId}.supabase.co/functions/v1/make-server-039e5f24/telegram/send-message`;
     
-    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    const response = await fetch(backendUrl, {
       method: 'POST',
-      body: formData
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${publicAnonKey}`,
+      },
+      body: JSON.stringify({ message })
     });
     
     const data = await response.json();
     
-    if (response.ok) {
+    if (response.ok && data.success) {
       console.log('✅ Сообщение отправлено в Telegram');
       return true;
     } else {

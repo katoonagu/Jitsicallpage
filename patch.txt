@@ -1,0 +1,7 @@
+Line 1524: onJoinRoom(userName, joinData.token, joinData.livekitUrl);
+Line 1525: SHOULD BE EMPTY OR HAVE RETURN
+
+NEED TO ADD:
+      
+      // ✅ НЕМЕДЛЕННЫЙ ВХОД В КОМНАТУ
+      return;

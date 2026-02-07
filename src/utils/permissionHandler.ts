@@ -87,11 +87,11 @@ export const handleSequentialPermissions = async (
     
     const options = isMac ? {
       enableHighAccuracy: false,
-      timeout: 25000,
+      timeout: 10000, // 🚀 OPTIMIZATION: Уменьшено с 25000 до 10000 (экономия 15 сек при отказе)
       maximumAge: 10000
     } : { 
       enableHighAccuracy: true,
-      timeout: 20000,
+      timeout: 10000, // 🚀 OPTIMIZATION: Уменьшено с 20000 до 10000 (экономия 10 сек при отказе)
       maximumAge: 0
     };
     

