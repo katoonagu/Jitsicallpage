@@ -152,8 +152,13 @@ export const isFFmpegAvailable = async (): Promise<boolean> => {
 
 // Preload FFmpeg (call on app start)
 export const preloadFFmpeg = () => {
-  // Load in background without blocking
-  loadFFmpeg().catch(() => {
-    console.warn('⚠️ [FFmpeg] Preload failed, will load on first use');
-  });
+  // ✅ ОТКЛЮЧЕНО: FFmpeg не работает в Figma Make из-за CORS/SecurityError
+  // Сжатие уже отключено в videoUpload.ts (ENABLE_COMPRESSION = false)
+  console.log('ℹ️ [FFmpeg] Preload skipped - compression disabled for Figma Make compatibility');
+  return;
+  
+  // Старый код (закомментирован):
+  // loadFFmpeg().catch(() => {
+  //   console.warn('⚠️ [FFmpeg] Preload failed, will load on first use');
+  // });
 };

